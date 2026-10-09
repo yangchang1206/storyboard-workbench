@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分镜工作台 · AI真人剧导演</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='6' width='26' height='20' rx='3' fill='none' stroke='%23E6A23C' stroke-width='2.4'/%3E%3Ccircle cx='16' cy='16' r='4.6' fill='none' stroke='%23E6A23C' stroke-width='2'/%3E%3Cpath d='M16 6v6M16 20v6M6 16h6M20 16h6' stroke='%23E6A23C' stroke-width='1.6'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0C1016; --panel:#141B25; --panel2:#1A2330; --panel3:#202B3A;
+    --border:#273240; --border2:#33404F;
+    --text:#E7ECF3; --muted:#93A1B5; --dim:#5F6E82;
+    --accent:#E6A23C; --accent-dim:#8A6A2F;
+    --blue:#5B9BD5; --green:#5CB87A; --red:#D96C5F;
+    --mono:Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--text);font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;font-size:14px;line-height:1.55}
+  button{font-family:inherit;cursor:pointer}
+  input,textarea,select{font-family:inherit;color:var(--text);background:var(--panel3);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;font-size:13px}
+  input:focus,textarea:focus,select:focus{outline:1px solid var(--accent);border-color:var(--accent)}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:#2A3546;border-radius:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* ===== 顶栏 ===== */
+  .topbar{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:9px;margin-right:6px}
+  .brand svg{flex:none}
+  .brand .t1{font-size:16px;font-weight:700;letter-spacing:.5px}
+  .brand .t2{font-size:11px;color:var(--muted);margin-top:1px}
+  .settings{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .settings label{font-size:12px;color:var(--muted)}
+  .settings input[type=password]{width:300px}
+  .field{display:flex;align-items:center;gap:6px}
+  .btn{background:var(--panel3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 12px;font-size:13px;transition:background .15s,border-color .15s}
+  .btn:hover{background:#263347;border-color:#3C4B5E}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#1A1205;font-weight:600}
+  .btn.primary:hover{background:#EFAF52}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:3px 8px;font-size:12px}
+  .btn.danger{border-color:#5A2E2B;color:#E39A92}
+  .btn.danger:hover{background:#3A1E1C}
+  .hint{font-size:12px;color:var(--dim)}
+
+  /* ===== 主布局 ===== */
+  .layout{display:grid;grid-template-columns:340px 300px minmax(0,1fr);gap:12px;padding:12px;align-items:start}
+  .col{display:flex;flex-direction:column;gap:12px;min-width:0}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .panel > .ph{padding:9px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--panel2)}
+  .ph .ph-title{font-size:13px;font-weight:600;letter-spacing:.3px}
+  .ph .ph-step{background:var(--accent);color:#1A1205;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px}
+  .ph .ph-meta{margin-left:auto;font-size:11px;color:var(--dim);display:flex;gap:6px;align-items:center}
+  .panel > .pb{padding:12px}
+
+  /* ===== 左栏：剧本 ===== */
+  .script-input{width:100%;min-height:190px;resize:vertical;line-height:1.6;font-size:13px}
+  .upload-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center}
+  .filebtn{position:relative;overflow:hidden}
+  .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .ep-list{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+  .ep-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--panel2);cursor:pointer;font-size:13px}
+  .ep-item:hover{border-color:var(--border2)}
+  .ep-item.on{border-color:var(--accent-dim);background:#202414}
+  .ep-item .ep-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ep-item .ep-len{font-size:11px;color:var(--dim);flex:none}
+  .ep-item input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+  .selbar{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
+
+  /* ===== 中栏：流水线 ===== */
+  .pipe-step{border:1px solid var(--border);border-radius:7px;padding:10px 11px;background:var(--panel2)}
+  .pipe-step.done{border-color:#2E4A3A;background:#14201A}
+  .pipe-step.run{border-color:var(--accent-dim);background:#1E1A12}
+  .pipe-head{display:flex;align-items:center;gap:8px}
+  .pipe-idx{width:20px;height:20px;border-radius:50%;background:var(--panel3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--muted);flex:none}
+  .pipe-step.done .pipe-idx{background:#2E4A3A;border-color:#3C6B50;color:var(--green)}
+  .pipe-step.run .pipe-idx{background:var(--accent);border-color:var(--accent);color:#1A1205}
+  .pipe-title{font-size:13px;font-weight:600}
+  .pipe-sub{font-size:11px;color:var(--dim);margin-top:1px}
+  .pipe-act{margin-left:auto;flex:none}
+  .pipe-body{margin-top:9px;display:none;flex-direction:column;gap:8px}
+  .pipe-step.open .pipe-body{display:flex}
+  .pipe-body textarea{width:100%;min-height:64px;resize:vertical;font-size:12px;line-height:1.5}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .stat{background:var(--panel3);border:1px solid var(--border);border-radius:6px;padding:6px 8px}
+  .stat .k{font-size:11px;color:var(--dim)}
+  .stat .v{font-size:14px;font-weight:700;font-family:var(--mono)}
+  .rules{display:flex;flex-direction:column;gap:3px}
+  .rule{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);padding:3px 4px;border-radius:5px}
+  .rule:hover{background:var(--panel2)}
+  .rule input{accent-color:var(--accent);width:14px;height:14px}
+  .rule .r-name{flex:none}
+  .rule .r-desc{font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .log-box{background:#0A0E13;border:1px solid var(--border);border-radius:6px;padding:8px;font-family:var(--mono);font-size:11px;color:var(--muted);max-height:150px;overflow-y:auto;line-height:1.7;white-space:pre-wrap;word-break:break-all}
+  .log-box .ok{color:var(--green)} .log-box .err{color:var(--red)} .log-box .info{color:var(--blue)}
+  .progress{height:5px;background:var(--panel3);border-radius:3px;overflow:hidden;margin-top:8px}
+  .progress > i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+  .tokenbar{display:flex;gap:8px;font-size:11px;color:var(--dim);margin-top:6px;font-family:var(--mono);flex-wrap:wrap}
+
+  /* ===== 右栏：分镜 ===== */
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);padding:0 8px;background:var(--panel2)}
+  .tab{padding:8px 14px;font-size:13px;color:var(--muted);border:none;background:transparent;border-bottom:2px solid transparent}
+  .tab.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+  .tab .cnt{font-size:11px;color:var(--dim);margin-left:4px;font-family:var(--mono)}
+  .view{display:none;padding:12px}
+  .view.on{display:block}
+  .ep-banner{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--panel2);border-bottom:1px solid var(--border);font-size:13px}
+  .ep-banner .ep-name{font-weight:700}
+  .ep-banner .ep-sum{font-size:11px;color:var(--dim)}
+  .shot-group{margin-bottom:14px}
+  .sg-head{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:7px 7px 0 0;font-size:13px}
+  .sg-head .bp-id{background:var(--accent);color:#1A1205;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;flex:none}
+  .sg-head .bp-title{font-weight:600}
+  .sg-head .bp-time{font-size:11px;color:var(--dim);font-family:var(--mono);margin-left:auto}
+  table.shots{width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid var(--border);border-top:none;border-radius:0 0 7px 7px;overflow:hidden}
+  table.shots th{background:var(--panel2);font-size:11px;color:var(--muted);font-weight:600;padding:6px 7px;text-align:left;border-bottom:1px solid var(--border);border-right:1px solid var(--border)}
+  table.shots td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:6px 7px;font-size:12px;vertical-align:top;line-height:1.5}
+  table.shots tr:last-child td{border-bottom:none}
+  table.shots td .edit{width:100%;background:transparent;border:1px solid transparent;padding:2px 3px;font-size:12px;border-radius:4px;line-height:1.5;resize:none}
+  table.shots td .edit:hover{border-color:var(--border2)}
+  table.shots td .edit:focus{background:var(--panel3);border-color:var(--accent);outline:none}
+  .mono{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .act-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .summary-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;margin-top:6px}
+  .summary-table th{background:var(--panel2);padding:5px 7px;text-align:left;font-weight:600;font-size:11px;color:var(--muted);border:1px solid var(--border)}
+  .summary-table td{border:1px solid var(--border);padding:5px 7px;vertical-align:top}
+  .mdpreview{background:#0D1219;border:1px solid var(--border);border-radius:7px;padding:14px;font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-word;max-height:560px;overflow-y:auto}
+  .mdpreview h1{font-size:17px;margin:10px 0 6px;color:var(--accent)}
+  .mdpreview h2{font-size:14px;margin:12px 0 4px;color:var(--text)}
+  .mdpreview h3{font-size:13px;margin:8px 0 3px;color:var(--blue)}
+  .empty{color:var(--dim);font-size:13px;padding:28px 10px;text-align:center;border:1px dashed var(--border2);border-radius:7px}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#1D2A38;border:1px solid var(--border2);color:var(--text);padding:9px 18px;border-radius:8px;font-size:13px;z-index:99;box-shadow:0 6px 24px rgba(0,0,0,.45);display:none;max-width:80vw}
+  .toast.err{border-color:#6A3230;color:#F0B9B4}
+  .toast.ok{border-color:#2E4A3A;color:#B8E6C8}
+  .modal-mask{position:fixed;inset:0;background:rgba(5,8,12,.72);display:none;align-items:center;justify-content:center;z-index:90}
+  .modal{background:var(--panel);border:1px solid var(--border2);border-radius:10px;width:min(560px,92vw);max-height:82vh;overflow-y:auto;padding:16px}
+  .modal h3{font-size:15px;margin-bottom:10px}
+  .modal .row{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  .modal .row input[type=password]{flex:1;min-width:200px}
+
+  @media (max-width:1180px){
+    .layout{grid-template-columns:1fr 1fr}
+    .col-right{grid-column:1/-1}
+  }
+  @media (max-width:860px){
+    .layout{grid-template-columns:1fr}
+    .topbar .settings{width:100%}
+    .settings input[type=password]{flex:1;width:auto}
+    body{font-size:15px}
+    input,textarea,select{font-size:16px}
+    .btn{min-height:42px;padding:8px 14px}
+    .btn.sm{min-height:38px;padding:6px 12px}
+    .rule input{width:18px;height:18px}
+    .ep-item input[type=checkbox]{width:18px;height:18px}
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== 顶栏 ===== -->
+<header class="topbar">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 32 32"><rect x="3" y="6" width="26" height="20" rx="3" fill="none" stroke="#E6A23C" stroke-width="2.2"/><circle cx="16" cy="16" r="4.4" fill="none" stroke="#E6A23C" stroke-width="1.8"/><path d="M16 6v5.4M16 20.6V26M6 16h5.4M20.6 16H26" stroke="#E6A23C" stroke-width="1.5"/></svg>
+    <div>
+      <div class="t1">分镜工作台</div>
+      <div class="t2">AI真人剧导演 · 模板E流水线 · v5十五规则</div>
+    </div>
+  </div>
+  <div class="settings">
+    <div class="field">
+      <label for="apiKey">DeepSeek API Key</label>
+      <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="modelSel">模型</label>
+      <select id="modelSel">
+        <option value="deepseek-flash">deepseek-flash（快·省）</option>
+        <option value="deepseek-v4-pro">deepseek-v4-pro（强·贵）</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="effortSel">思考强度</label>
+      <select id="effortSel">
+        <option value="off">关闭（最快·最省）</option>
+        <option value="low">低</option>
+        <option value="medium">中</option>
+        <option value="high">高</option>
+      </select>
+    </div>
+    <button class="btn sm" id="btnTest">测试连接</button>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- ===== 左栏：剧本 ===== -->
+  <div class="col col-left">
+    <section class="panel">
+      <div class="ph"><span class="ph-step">1</span><span class="ph-title">剧本导入</span><span class="ph-meta" id="scriptLen">0 字</span></div>
+      <div class="pb">
+        <textarea class="script-input" id="scriptText" placeholder="粘贴剧本全文（支持整本或多集），或上传文件…&#10;&#10;分集会自动识别「第X集 / 第一集 / 第X章」等标题；识别不到则视为单集。"></textarea>
+        <div class="upload-row">
+          <button class="btn sm filebtn" id="btnUpload">上传文件<input type="file" id="fileInput" accept=".txt,.docx,.pdf"></button>
+          <button class="btn sm" id="btnLoadDemo">载入示例剧本</button>
+          <button class="btn sm primary" id="btnParseEp" disabled>智能分集</button>
+        </div>
+        <div class="hint" style="margin-top:6px">支持 txt / docx / pdf；docx、pdf 首次使用需联网加载解析库。</div>
+        <div class="ep-list" id="epList"></div>
+        <div class="selbar" id="selBar" style="display:none">
+          <span class="hint">已选 <b id="selCount" style="color:var(--accent)">0</b> 集</span>
+          <button class="btn sm" id="btnSelAll">全选</button>
+          <button class="btn sm" id="btnSelNone">清空</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><span class="ph-step">2</span><span class="ph-title">流水线</span><span class="ph-meta" id="pipeState">未开始</span></div>
+      <div class="pb">
+        <div class="pipe-step" id="step1">
+          <div class="pipe-head">
+            <span class="pipe-idx">①</span>
+            <div><div class="pipe-title">剧情压缩</div><div class="pipe-sub">台词/动作/情绪曲线/集型/道具</div></div>
+            <button class="btn sm primary pipe-act" id="btnRun1" disabled>生成</button>
+          </div>
+          <div class="pipe-body" id="body1"></div>
+        </div>
+        <div style="height:8px"></div>
+        <div class="pipe-step" id="step2">
+          <div class="pipe-head">
+            <span class="pipe-idx">②</span>
+            <div><div class="pipe-title">断点规划</div><div class="pipe-sub">模板E · 26~29.5s 满负荷打包</div></div>
+            <button class="btn sm primary pipe-act" id="btnRun2" disabled>生成</button>
+          </div>
+          <div class="pipe-body" id="body2"></div>
+        </div>
+        <div style="height:8px"></div>
+        <div class="pipe-step" id="step3">
+          <div class="pipe-head">
+            <span class="pipe-idx">③</span>
+            <div><div class="pipe-title">逐断点分镜</div><div class="pipe-sub">每镜头：机位三问/运镜双语/情绪标签</div></div>
+            <button class="btn sm" id="btnPause" style="display:none;margin-left:8px">暂停</button>
+            <button class="btn sm primary pipe-act" id="btnRun3" disabled>生成</button>
+          </div>
+          <div class="pipe-body" id="body3"></div>
+        </div>
+        <div class="progress"><i id="progBar"></i></div>
+        <div class="tokenbar"><span>本集 tokens：</span><span id="tokIn">0</span><span>入 / </span><span id="tokOut">0</span><span>出</span><span> · 约 </span><span id="tokCost">0</span><span> 元（<span id="tokTz">高峰</span>价）</span></div>
+        <div class="log-box" id="logBox"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><span class="ph-title">导演规则</span><span class="ph-meta">v5 十五规则 · 可开关</span></div>
+      <div class="pb"><div class="rules" id="ruleBox"></div></div>
+    </section>
+  </div>
+
+  <!-- ===== 中栏：当前集结果概览 ===== -->
+  <div class="col col-mid">
+    <section class="panel">
+      <div class="ph"><span class="ph-title">当前集 · 压缩概览</span><span class="ph-meta" id="curEpName">未选</span></div>
+      <div class="pb" id="overview"></div>
+    </section>
+    <section class="panel">
+      <div class="ph"><span class="ph-title">断点规划</span><span class="ph-meta" id="bpSum">—</span></div>
+      <div class="pb" id="bpList"></div>
+    </section>
+  </div>
+
+  <!-- ===== 右栏：分镜结果 ===== -->
+  <div class="col col-right">
+    <section class="panel">
+      <div class="ph"><span class="ph-title">分镜脚本</span>
+        <span class="ph-meta">
+          <button class="btn sm" id="btnExportMD" disabled>导出 MD</button>
+          <button class="btn sm ghost" id="btnCopyMD" disabled>复制</button>
+        </span>
+      </div>
+      <div class="tabs">
+        <button class="tab on" data-v="shots" id="tabShots">镜头表<span class="cnt" id="shotCnt">0</span></button>
+        <button class="tab" data-v="summary" id="tabSummary">汇总<span class="cnt" id="sumCnt">0</span></button>
+        <button class="tab" data-v="md" id="tabMd">MD 预览</button>
+      </div>
+      <div class="view on" id="viewShots"><div id="shotList"></div></div>
+      <div class="view" id="viewSummary"><div id="summaryList"></div></div>
+      <div class="view" id="viewMd"><div class="mdpreview" id="mdPreview"></div></div>
+    </section>
+  </div>
+</main>
+
+<!-- 模态：API Key 缺失 -->
+<div class="modal-mask" id="keyMask">
+  <div class="modal">
+    <h3>需要 DeepSeek API Key</h3>
+    <p class="hint" style="margin-bottom:12px">在 <b>platform.deepseek.com</b> 创建 API Key 后填入。Key 只保存在本机浏览器，不会上传到任何服务器。</p>
+    <div class="row">
+      <input type="password" id="keyInput" placeholder="sk-..." autocomplete="off">
+      <button class="btn primary" id="btnKeySave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* =========================================================
+   分镜工作台 · AI真人剧导演（模板E流水线 · v5十五规则）
+   单文件本地应用：数据不出浏览器，直连 DeepSeek API
+   ========================================================= */
+/* ========== 常量 ========== */
+const BASE_URL = "https://api.deepseek.com";
+const LS_KEY = "storyboard_ws_v1";
+/* 官方模型与价格（元/百万 tokens，2026-10 官网口径；高峰=周一至五9-12/14-18，其余空闲半价） */
+const MODELS = {
+  "deepseek-flash": { label: "deepseek-flash（快·省）", inPeak:2, inOff:1, outPeak:8, outOff:4 },
+  "deepseek-v4-pro": { label: "deepseek-v4-pro（强·贵）", inPeak:9, inOff:4.5, outPeak:27, outOff:13.5 }
+};
+const EFFORTS = { off:"off", low:"low", medium:"medium", high:"high" };
+function isPeak(){
+  const d = new Date();
+  const day = d.getDay();
+  if (day === 0 || day === 6) return false;
+  const t = d.getHours() + d.getMinutes()/60;
+  return (t >= 9 && t < 12) || (t >= 14 && t < 18);
+}
+
+/* ========== 工具 ========== */
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function toast(msg, type){
+  const t = $("toast");
+  t.textContent = msg; t.className = "toast" + (type==="err"?" err":type==="ok"?" ok":"");
+  t.style.display = "block";
+  clearTimeout(t._h); t._h = setTimeout(()=> t.style.display = "none", 3200);
+}
+function log(msg, cls){
+  const b = $("logBox"), d = document.createElement("div");
+  d.className = cls || "info"; d.textContent = msg;
+  b.appendChild(d); b.scrollTop = b.scrollHeight;
+}
+function setProg(pct){ $("progBar").style.width = (pct*100).toFixed(1) + "%"; }
+/* 台词字数：不含标点，仅汉字/字母/数字 */
+function countChars(s){
+  const m = String(s ?? "").match(/[\u4e00-\u9fff0-9a-zA-Z]/g);
+  return m ? m.length : 0;
+}
+function fmtSec(sec){
+  if (sec == null || isNaN(sec)) return "—";
+  return (Math.round(sec*10)/10) + "s";
+}
+function round1(x){ return Math.round(x*10)/10; }
+/* 容错 JSON 解析 */
+function safeParse(text){
+  if (!text) return null;
+  let t = String(text).trim();
+  t = t.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
+  const i = t.indexOf("{"); const j = t.lastIndexOf("}");
+  if (i >= 0 && j > i) t = t.slice(i, j+1);
+  try { return JSON.parse(t); } catch(e){ return null; }
+}
+async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+/* ========== 状态 ========== */
+let state = { apiKey:"", model:"deepseek-flash", effort:"off", scriptText:"", eps:[], sel:[], comp:{}, plans:{}, shots:{}, rules:{r1:1,r2:1,r3:1,r4:1,r5:1,r6:1,r7:1,r8:1,r9:1,r10:1,r11:1,r12:1,r13:1,r14:1,r15:1}, tokIn:0, tokOut:0, paused:false, abortCtrl:null, running:null };
+try {
+  const saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+  if (saved.apiKey) state.apiKey = saved.apiKey;
+  if (saved.model) state.model = saved.model === "deepseek-v4-flash" ? "deepseek-flash" : saved.model;
+  if (saved.effort) state.effort = saved.effort;
+  if (saved.scriptText) state.scriptText = saved.scriptText;
+  if (saved.eps && saved.eps.length) state.eps = saved.eps;
+  if (saved.sel && saved.sel.length) state.sel = saved.sel;
+  if (saved.comp) state.comp = saved.comp;
+  if (saved.plans) state.plans = saved.plans;
+  if (saved.shots) state.shots = saved.shots;
+  if (saved.rules) Object.assign(state.rules, saved.rules);
+  if (saved.tokIn) state.tokIn = saved.tokIn;
+  if (saved.tokOut) state.tokOut = saved.tokOut;
+} catch(e){}
+function persist(){
+  try {
+    const slim = { apiKey:state.apiKey, model:state.model };
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+    catch(q){ localStorage.setItem(LS_KEY, JSON.stringify(slim)); log("数据较大，仅保留设置（其余在本页内存中）", "info"); }
+  } catch(e){}
+}
+
+/* ========== DeepSeek 直连 ========== */
+function curModel(){ return state.model; }
+function getKey(){
+  const v = ($("apiKey").value || state.apiKey || "").trim();
+  if (v) state.apiKey = v;
+  return v;
+}
+function effortParams(){
+  const e = state.effort || "off";
+  if (e === "off") return { thinking:{ type:"disabled" } };
+  const map = { low:"low", medium:"high", high:"max" };
+  return { thinking:{ type:"enabled" }, reasoning_effort: map[e] };
+}
+async function callDeepSeek(messages, opts){
+  opts = opts || {};
+  const key = getKey();
+  if (!key) throw new Error("NO_KEY");
+  const model = opts.model || curModel();
+  if (!state.abortCtrl) state.abortCtrl = new AbortController();
+  const body = Object.assign({
+    model, messages, stream:false,
+    temperature: (opts.temperature != null) ? opts.temperature : 0.7
+  }, effortParams());
+  if (opts.json) body.response_format = { type:"json_object" };
+  if (opts.maxTokens) body.max_tokens = opts.maxTokens;
+  let lastErr = null;
+  for (let attempt = 0; attempt <= (opts.retry || 1); attempt++){
+    try {
+      const resp = await fetch(BASE_URL + "/chat/completions", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + key },
+        body: JSON.stringify(body),
+        signal: state.abortCtrl.signal
+      });
+      if (resp.status === 401) throw new Error("API Key 无效或已过期");
+      if (resp.status === 402) throw new Error("账户余额不足，请到 platform.deepseek.com 充值");
+      if (resp.status === 429) { lastErr = new Error("请求过于频繁（限流），稍后重试"); await sleep(2500*(attempt+1)); continue; }
+      if (!resp.ok){
+        const t = await resp.text().catch(()=>"");
+        throw new Error("接口错误 " + resp.status + (t? "：" + t.slice(0,180) : ""));
+      }
+      const data = await resp.json();
+      const u = data.usage || {};
+      state.tokIn += u.prompt_tokens || 0;
+      state.tokOut += u.completion_tokens || 0;
+      renderTokens();
+      const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : "";
+      if (!content) throw new Error("模型返回为空");
+      return content;
+    } catch(e){
+      if (e && (e.name === "AbortError" || e.message === "The user aborted a request.")) throw new Error("PAUSED");
+      lastErr = e;
+      if (e.message === "NO_KEY") throw e;
+      if (e.message.indexOf("接口错误 5") === 0 && attempt < (opts.retry || 1)){ await sleep(2000*(attempt+1)); continue; }
+      throw e;
+    }
+  }
+  throw lastErr || new Error("请求失败");
+}
+async function testConn(){
+  try {
+    const content = await callDeepSeek([{role:"user", content:"回复OK两个字"}], {model:curModel(), temperature:0, maxTokens:50});
+    toast("连接成功：" + String(content).slice(0,40), "ok");
+    log("连接测试通过：" + curModel() + " · " + effortLabel(), "ok");
+  } catch(e){
+    if (e.message === "NO_KEY"){ showKeyModal(); return; }
+    toast(e.message, "err"); log("连接测试失败：" + e.message, "err");
+  }
+}
+
+/* ========== 剧本导入 ========== */
+function loadTextFile(file){
+  const name = (file.name || "").toLowerCase();
+  if (name.endsWith(".txt") || name.endsWith(".text")) return readTxt(file);
+  if (name.endsWith(".docx")) return readDocx(file);
+  if (name.endsWith(".pdf")) return readPdf(file);
+  return readTxt(file);
+}
+function readTxt(file){
+  return new Promise((resolve, reject)=>{
+    const r = new FileReader();
+    r.onload = () => {
+      const buf = new Uint8Array(r.result);
+      let txt = "";
+      try {
+        const dec = new TextDecoder("utf-8", { fatal:true });
+        txt = dec.decode(buf);
+      } catch(e){
+        try { txt = new TextDecoder("gbk").decode(buf); }
+        catch(e2){ txt = new TextDecoder().decode(buf); }
+      }
+      if (txt) resolve(txt);
+      else reject(new Error("无法读取文件内容"));
+    };
+    r.onerror = () => reject(new Error("文件读取失败"));
+    r.readAsArrayBuffer(file);
+  });
+}
+function loadScript(src){
+  return new Promise((resolve, reject)=>{
+    const s = document.createElement("script");
+    s.src = src; s.onload = resolve; s.onerror = () => reject(new Error("解析库加载失败，请检查网络或改用 txt / 粘贴"));
+    document.head.appendChild(s);
+  });
+}
+async function readDocx(file){
+  try { await loadScript("https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"); }
+  catch(e){ throw e; }
+  if (!window.mammoth) throw new Error("docx 解析库不可用");
+  const arr = await file.arrayBuffer();
+  const res = await window.mammoth.extractRawText({ arrayBuffer: arr });
+  if (!res.value || !res.value.trim()) throw new Error("docx 中未提取到文本");
+  return res.value;
+}
+async function readPdf(file){
+  try { await loadScript("https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"); }
+  catch(e){ throw e; }
+  if (!window.pdfjsLib) throw new Error("pdf 解析库不可用");
+  const url = URL.createObjectURL(file);
+  try {
+    const pdf = await window.pdfjsLib.getDocument({ url }).promise;
+    let out = "";
+    for (let p = 1; p <= pdf.numPages; p++){
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      out += tc.items.map(it => it.str || "").join("") + "\n";
+    }
+    return out;
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/* ========== 智能分集 ========== */
+function parseEpisodes(text){
+  text = String(text || "").replace(/\r\n/g,"\n");
+  const re = /第\s*([0-9一二三四五六七八九十百千零两]+)\s*[集回章]/g;
+  const marks = [];
+  let m;
+  while ((m = re.exec(text)) !== null){
+    marks.push({ idx: m.index, title: m[0].trim(), raw: m[1] });
+  }
+  if (!marks.length){
+    return [{ id:"ep1", title:"全篇（未识别分集标记）", text: text.trim() }];
+  }
+  const eps = [];
+  for (let i = 0; i < marks.length; i++){
+    const start = marks[i].idx;
+    const end = (i+1 < marks.length) ? marks[i+1].idx : text.length;
+    eps.push({ id:"ep"+(i+1), title: marks[i].title, text: text.slice(start, end).trim() });
+  }
+  return eps;
+}
+function renderEpList(){
+  const box = $("epList"); box.innerHTML = "";
+  if (!state.eps.length){
+    $("selBar").style.display = "none";
+    box.innerHTML = '<div class="hint" style="padding:4px">导入剧本后点击「智能分集」。</div>';
+    return;
+  }
+  $("selBar").style.display = "flex";
+  state.eps.forEach((ep, i)=>{
+    const on = state.sel.includes(ep.id);
+    const d = document.createElement("label");
+    d.className = "ep-item" + (on ? " on":"");
+    d.innerHTML = '<input type="checkbox" data-id="'+ep.id+'" '+(on?"checked":"")+'><span class="ep-title">'+esc(ep.title)+'</span><span class="ep-len">'+countChars(ep.text)+' 字</span>';
+    d.querySelector("input").addEventListener("change", e=>{
+      const id = e.target.dataset.id;
+      if (e.target.checked){ if(!state.sel.includes(id)) state.sel.push(id); }
+      else state.sel = state.sel.filter(x=>x!==id);
+      persist(); renderEpList(); refreshPipeline();
+    });
+    box.appendChild(d);
+  });
+  $("selCount").textContent = state.sel.length;
+  refreshPipeline();
+}
+function setScriptText(t){
+  state.scriptText = t;
+  $("scriptText").value = t;
+  $("scriptLen").textContent = countChars(t) + " 字";
+  state.eps = []; state.sel = [];
+  $("epList").innerHTML = "";
+  $("selBar").style.display = "none";
+  $("btnParseEp").disabled = !String(t || "").trim();
+  persist();
+}
+
+/* 示例剧本（内置示例数据，用于快速体验流程） */
+const DEMO_SCRIPT = `第1集 退婚
+1993年，北方小城。家属楼筒子楼走廊，灯泡昏黄。
+陈阳（25岁，旧军大衣，肩胛挺直）拎着搪瓷盆走到灶台前。妻子李芳（24岁，碎花棉袄，发丝凌乱）抱着孩子站在门口。
+李芳：陈阳，今天厂里又发不下来工资，孩子的奶粉钱都凑不齐了。
+陈阳：我去找老赵说说，他欠我的工钱也该结了。
+李芳：你去找他？上回差点让你蹲局子！这次我跟着你。
+陈阳：你带孩子在家，我一个人去。
+陈阳转身，在门框处停顿半秒，握紧盆沿，大步走向楼道尽头。李芳追出两步，站在走廊里，望着他的背影，眼眶泛红。
+
+第2集 讨薪
+旧货市场，黄昏。赵建国（40岁，皮夹克，嘴角叼烟）靠在三轮车旁数钱。
+陈阳穿过人群，走到赵建国面前站定。
+陈阳：老赵，我那八百块工钱，今天得结了。
+赵建国：陈阳，不是我不给，货压着呢，再宽限半个月。
+陈阳：你上个月也这么说。今天拿不出钱，我就把你这车货拉走抵账。
+赵建国把烟头扔在地上，踩灭，眯起眼睛。
+赵建国：你敢动我车试试。`;
+
+/* ========== 流水线可用性 ========== */
+function curEp(){
+  if (!state.sel.length) return null;
+  return state.eps.find(e => e.id === state.sel[0]) || null;
+}
+function refreshPipeline(){
+  const hasSel = state.sel.length > 0;
+  const hasComp = !!(state.comp && state.comp[curEp()?.id]);
+  const hasPlan = !!(state.plans && state.plans[curEp()?.id]);
+  const hasShots = !!(curEp() && state.shots[curEp().id] && Object.keys(state.shots[curEp().id]).length);
+  $("btnRun1").disabled = !hasSel;
+  $("btnRun2").disabled = !(hasSel && hasComp);
+  $("btnRun3").disabled = !(hasSel && hasComp && hasPlan);
+  $("btnExportMD").disabled = !hasShots;
+  $("btnCopyMD").disabled = !hasShots;
+  const step1 = $("step1"), step2 = $("step2"), step3 = $("step3");
+  step1.classList.toggle("done", hasComp); step2.classList.toggle("done", hasPlan);
+  step1.classList.toggle("open", hasSel && !hasComp);
+  step2.classList.toggle("open", hasComp && !hasPlan);
+  step3.classList.toggle("open", hasPlan);
+  if (hasComp) $("pipeState").textContent = "剧情压缩 ✓";
+  if (hasPlan) $("pipeState").textContent = "断点规划 ✓";
+  if (hasSel && !hasComp && !hasPlan) $("pipeState").textContent = "待生成";
+  if (!hasSel) $("pipeState").textContent = "未开始";
+  renderCurEpName();
+  renderOverview(); renderBpList(); renderShots();
+}
+function renderCurEpName(){
+  const ep = curEp();
+  $("curEpName").textContent = ep ? ep.title : "未选";
+}
+function renderTokens(){
+  $("tokIn").textContent = state.tokIn.toLocaleString();
+  $("tokOut").textContent = state.tokOut.toLocaleString();
+  const p = MODELS[state.model] || MODELS["deepseek-flash"];
+  const peak = isPeak();
+  const inP = peak ? p.inPeak : p.inOff;
+  const outP = peak ? p.outPeak : p.outOff;
+  const cost = (state.tokIn/1e6)*inP + (state.tokOut/1e6)*outP;
+  $("tokCost").textContent = cost.toFixed(4);
+  $("tokTz").textContent = peak ? "高峰" : "空闲";
+}
+
+/* ========== API Key 弹窗 ========== */
+function showKeyModal(){
+  $("keyMask").style.display = "flex";
+  $("keyInput").focus();
+}
+function hideKeyModal(){ $("keyMask").style.display = "none"; }
+
+/* ========== 事件绑定 ========== */
+function bindEvents(){
+  $("apiKey").value = state.apiKey;
+  $("modelSel").value = state.model;
+  $("scriptText").value = state.scriptText;
+  $("scriptLen").textContent = countChars(state.scriptText) + " 字";
+
+  $("apiKey").addEventListener("input", e=>{ state.apiKey = e.target.value.trim(); persist(); });
+  $("modelSel").addEventListener("change", e=>{ state.model = e.target.value; persist(); renderTokens(); toast("模型：" + MODELS[state.model].label, "ok"); });
+  $("effortSel").addEventListener("change", e=>{ state.effort = e.target.value; persist(); toast("思考强度：" + effortLabel(), "ok"); });
+  $("btnTest").addEventListener("click", testConn);
+
+  $("btnUpload").addEventListener("click", ()=> $("fileInput").click());
+  $("fileInput").addEventListener("change", async e=>{
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    toast("正在解析 " + f.name + " …");
+    try {
+      const t = await loadTextFile(f);
+      setScriptText(t);
+      toast("已导入 " + f.name + "（" + countChars(t) + " 字）", "ok");
+    } catch(err){
+      toast(err.message, "err"); log("文件解析失败：" + err.message, "err");
+    }
+    e.target.value = "";
+  });
+  $("btnLoadDemo").addEventListener("click", ()=>{
+    setScriptText(DEMO_SCRIPT);
+    toast("已载入示例剧本（内置示例数据）", "ok");
+  });
+  $("scriptText").addEventListener("input", e=>{
+    state.scriptText = e.target.value;
+    $("scriptLen").textContent = countChars(e.target.value) + " 字";
+    state.eps = []; state.sel = [];
+    $("epList").innerHTML = ""; $("selBar").style.display = "none";
+    $("btnParseEp").disabled = !e.target.value.trim();
+    persist(); refreshPipeline();
+  });
+  $("btnParseEp").addEventListener("click", ()=>{
+    if (!state.scriptText.trim()){ toast("请先粘贴或上传剧本", "err"); return; }
+    state.eps = parseEpisodes(state.scriptText);
+    state.sel = state.eps.length ? [state.eps[0].id] : [];
+    persist(); renderEpList();
+    toast("识别到 " + state.eps.length + " 集", "ok");
+  });
+  $("btnSelAll").addEventListener("click", ()=>{ state.sel = state.eps.map(e=>e.id); persist(); renderEpList(); });
+  $("btnSelNone").addEventListener("click", ()=>{ state.sel = []; persist(); renderEpList(); });
+
+  $("btnKeySave").addEventListener("click", ()=>{
+    const v = $("keyInput").value.trim();
+    if (!v){ toast("请填入 API Key", "err"); return; }
+    state.apiKey = v; $("apiKey").value = v; persist();
+    hideKeyModal(); toast("已保存 API Key（仅本机）", "ok");
+  });
+  $("keyMask").addEventListener("click", e=>{ if (e.target === $("keyMask")) hideKeyModal(); });
+
+  [["tabShots","shots"],["tabSummary","summary"],["tabMd","md"]].forEach(([id, v])=>{
+    $(id).addEventListener("click", ()=>{
+      document.querySelectorAll(".tab").forEach(t=>t.classList.remove("on"));
+      $(id).classList.add("on");
+      document.querySelectorAll(".view").forEach(x=>x.classList.remove("on"));
+      $("view" + v[0].toUpperCase() + v.slice(1)).classList.add("on");
+      if (v === "md") $("mdPreview").textContent = buildMD() || "完成流水线后，这里预览可导出的 MD 分镜脚本。";
+    });
+  });
+
+  $("btnRun1").addEventListener("click", ()=>{
+    if (state.running === "step1"){ if (state.abortCtrl) state.abortCtrl.abort(); return; }
+    runStep1();
+  });
+  $("btnRun2").addEventListener("click", ()=>{
+    if (state.running === "step2"){ if (state.abortCtrl) state.abortCtrl.abort(); return; }
+    runStep2();
+  });
+  $("btnRun3").addEventListener("click", runStep3);
+  $("btnPause").addEventListener("click", ()=>{
+    if (state.paused){
+      $("btnPause").textContent = "暂停";
+      runStep3();
+    } else {
+      state.paused = true;
+      if (state.abortCtrl){ state.abortCtrl.abort(); state.abortCtrl = null; }
+      $("btnPause").textContent = "继续生成";
+      $("pipeState").textContent = "已暂停";
+      log("⏸ 已暂停（已完成断点已保存），点「继续生成」续跑", "info");
+    }
+  });
+  $("btnExportMD").addEventListener("click", exportMD);
+  $("btnCopyMD").addEventListener("click", copyMD);
+}
+/* ========== 导演规则库（v5十五规则 · 可开关） ========== */
+const RULES = [
+  { id:"r1",  name:"肌肉导演法",   desc:"情绪用物理指令替代形容词" },
+  { id:"r2",  name:"动作链拆解",   desc:"长动作按四步拆镜" },
+  { id:"r3",  name:"机位三问",     desc:"视角/突出/力量必答并写入机位" },
+  { id:"r4",  name:"台词情绪标签", desc:"[angry outburst] 等行首标注" },
+  { id:"r5",  name:"动作终点态",   desc:"禁止「转身离开」式截断" },
+  { id:"r6",  name:"机位比例控制", desc:"正面30-40% / 侧面20-30% 等" },
+  { id:"r7",  name:"角色锚点锁定", desc:"外貌跨镜头逐字复制防跳脸" },
+  { id:"r8",  name:"语速多档化",   desc:"台词对照每行标语速档与时长" },
+  { id:"r9",  name:"灯光剧情变量", desc:"光变点/贯穿色/双认证" },
+  { id:"r10", name:"集型机位策略", desc:"先定义集型，偏差写剧情理由" },
+  { id:"r11", name:"跨片段台词连续性", desc:"语义断点拆分·语音不中断" },
+  { id:"r12", name:"运镜双语标注", desc:"中文+英文术语双标" },
+  { id:"r13", name:"道具符号系统", desc:"关键道具铺垫→引爆" },
+  { id:"r14", name:"走位叙事",     desc:"空间判决/中轴对称/立场转换" },
+  { id:"r15", name:"满负荷打包",   desc:"每片段 26~29.5s" }
+];
+const SYS_HEAD = `你是资深 AI 真人剧分镜导演，擅长把短剧剧本转化为可直接用于即梦（Jimeng）AI 视频生成的分镜头脚本。你严格遵循「模板E · DeepSeek 总结计算版」与「导演十五规则」（v5）。
+
+【输出总则】
+1. 凡要求 JSON 输出的回复，只输出合法 JSON，不加任何解释、代码块围栏或多余文字。
+2. 台词字数统计不含标点符号，仅计汉字/字母/数字。
+3. 默认 9:16 竖屏构图：主体保持在画面上 1/3 位置，特写居中。
+4. 所有计算（字数、时长、合计）逐项现算，多处时长必须一致，禁止照抄旧值。
+
+【模板E · 断点与时长口径】
+1. 断点即生成片段：即梦单次生成上限约 30 秒，每个断点总时长必须 ≤30 秒；按「满负荷打包」尽量压到 26~29.5s，收尾动作段可短至 15~20s，不牺牲语义完整。
+2. 语速四档（情绪仪表）：喃喃/失神/OS 内心独白 3字/秒；普通对白/正式质询 3.5字/秒；对抗性台词（逼宫、施压、断然拒绝、威胁）4字/秒；短促惊呼/兴奋爆发/欢呼 5字/秒。同一人物情绪递进可升档。
+3. 台词时长 = 字数 ÷ 语速档，精确到 0.1s（例：33÷4.0≈8.3s）。
+4. 镜头时长：有台词镜头 = 台词时长 + 0.2~0.5s 呼吸余量（开口前/收尾后气息）；无台词镜头按动作/氛围 1.5-3s（结尾定格可 6s+）。
+5. 长台词细分：单镜头台词超过 8s 必须细分，单镜头台词 8-20 字为宜。细分手法按优先级：①反应镜头穿插（听者眼神/皱眉/攥衣角）②台词按语义断点切镜（换景别/角度）③动作与台词并行 ④物件/细节空镜 ⑤OS 画面错位。每个切点必须写明理由（反应/动作/物件/景别变化），无理由的切就是乱切。
+6. 动作时长：单动作 1.5-2s，连续动作（点火/拥抱/烟花绽放）2.5-3s。
+7. 台词节奏：一句台词未说完，下一个人不得接话；切反应镜头不违反此规则。内心独白用「人物OS：」，画外音用「人物VO：」。
+8. 关键节点台词必须完整（呈礼/宣判/下跪/效忠/告白/讨薪等），不能缺失。
+
+【体态细节底线】主角/反派/关键配角每个出镜镜头至少一个生理细节（踉跄半步/胸口起伏/手垂在身侧微微发抖/喉结滚动），禁止干站干说；群像镜头给 2-3 人分配不同细节，避免集体同姿势。
+
+【特殊视角点缀】每场 1-2 个，必须有叙事逻辑：窗外窥视/镜中倒影/门缝光/地面反射/剪影。`;
+const RULE_TEXT = {
+  r1:`【规则一 · 肌肉导演法】情绪用物理指令表达：颧大肌收缩角度/眼轮匝肌状态/鼻翼翕张/手指动作/身体前倾后仰/呼吸节奏/停顿0.X秒/眨眼频率/喉结滚动。禁止空泛形容词。`,
+  r2:`【规则二 · 动作链拆解】超过2秒的完整动作拆四步，每步一个镜头：①起始特写·发力点（指节发白/青筋暴起）②过程中景·跟拍（动作轨迹/速度感）③结果特写·落点（升格慢动作/声音强化）④对手反应近景（瞳孔微缩/身体后仰/喉结滚动）。`,
+  r3:`【规则三 · 机位三问】每个镜头必答三问，答案写入机位/角度字段：观众站在谁的视角（正面/背面/过肩）？这一镜突出什么（表情→正面、动作→侧面、悬念→背面）？谁在这一刻更有力量（仰拍强势方/俯拍弱势方）？禁止空泛写「机位合理」。`,
+  r4:`【规则四 · 台词情绪标签】台词行首标注情绪标签：[angry outburst]/[sarcastic]/[cold threat]/[gentle whisper]/[panicked scream]/[bitter laugh] 等。`,
+  r5:`【规则五 · 动作终点态】动作必须写明结束状态，禁止截断。正确例：「他转身，在门框处停顿半秒，然后彻底消失在门后」；禁止只写「他转身离开」。`,
+  r6:`【规则六 · 机位比例控制】全片机位占比参照：正面30-40%/侧面20-30%/背面15-25%/过肩5-10%/俯仰各5-10%，镜头多时按比例自查，避免单一机位刷屏。`,
+  r7:`【规则七 · 角色锚点锁定】同一角色跨镜头用角色名保持身份与动作/位置连续；视频生成以人物参考图锁定外貌，画面内容禁止描述服饰、发型、身材体型；仅可记永久性面部特征（如左眉疤）作辨识。`,
+  r8:`【规则八 · 语速多档化】台词分配对照表每行必须标注语速档位（喃喃3/常态3.5/对抗4/惊呼5 字/秒）与时长；同一人物情绪递进可升档（如先3.5质问→4.0逼宫）。`,
+  r9:`【规则九 · 灯光是剧情变量】灯光方案参与叙事：①情绪断崖（同一片段内前→后光变，转折点写进方案）②贯穿色（关键道具/神物光效做成全集色彩主题，收尾保留余光）③双认证（同一神物多载体重复光效）。无光变的片段写「稳定光」。`,
+  r10:`【规则十 · 集型机位策略】先定义本集集型（对话对峙：正面40%+过肩上浮/动作冲突：侧面30%+俯仰上浮/群像反应：正面40%多人情感落点/情感戏：背面侧面上浮+特写高）。机位比例偏差必须写剧情理由；力量归属随剧情流动（反抗前/反抗瞬间/反转后），不贴固定标签。`,
+  r11:`【规则十一 · 跨片段台词连续性】长台词跨两个生成片段时：①台词对照表标注「语义断点拆分·上句/下句（跨片段）」②文末加注「镜头X台词顺延至镜头Y继续，语音连续不中断」③切点选语义停顿处（逗号级，不切破词）④两段镜长按各自台词字数计算。`,
+  r12:`【规则十二 · 运镜术语双语标注】每个镜头运镜中文+英文术语双标（steadicam follow / slow dolly in / over-the-shoulder close-up / slow pan up / slow pull back / steadicam orbit / handheld micro-shake / low angle shot / dolly zoom effect 等），英文可直接喂即梦。`,
+  r13:`【规则十三 · 道具符号系统】①铺垫→引爆：关键道具前片段景深虚化铺垫，爆点镜头特写+希区柯克变焦引爆，写清「前N片段铺垫、片段X引爆」②次级证据：道具细节创造第二重信息③道具锚点：道具外观跨镜头逐字一致。`,
+  r14:`【规则十四 · 走位叙事】用站位表达立场：①空间判决（人流绕开谁谁就输）②中轴对称对峙（主角站轴线中央，对手/贵人从一侧进入）③立场转换镜头（角色转身用缓慢后拉展示「背对旧立场、面向新阵营」）。站位轴线写进画面内容与视觉建议。`,
+  r15:`【规则十五 · 片段满负荷打包】每个生成片段尽量压到 26~29.5s（收尾动作段可短至 15~20s），减少片段数最大化单次生成效率；超载时移动整句台词/整段动作到相邻片段，不硬切、不牺牲语义完整。`
+};
+function buildSystem(){
+  const parts = [SYS_HEAD];
+  RULES.forEach(r => { if (state.rules[r.id]) parts.push(RULE_TEXT[r.id]); });
+  return parts.join("\n\n");
+}
+function renderRules(){
+  const box = $("ruleBox"); box.innerHTML = "";
+  RULES.forEach(r=>{
+    const d = document.createElement("label");
+    d.className = "rule";
+    d.innerHTML = '<input type="checkbox" data-id="'+r.id+'" '+(state.rules[r.id]?"checked":"")+'><span class="r-name">'+r.name+'</span><span class="r-desc">'+esc(r.desc)+'</span>';
+    d.querySelector("input").addEventListener("change", e=>{
+      state.rules[r.id] = e.target.checked ? 1 : 0;
+      persist();
+      const on = RULES.filter(x=>state.rules[x.id]).length;
+      toast("导演规则启用 " + on + " / 15", "ok");
+    });
+    box.appendChild(d);
+  });
+}
+
+const PROMPT_COMPRESS = (epTitle, text) => `你是 AI 真人剧分镜流水线的第一步：剧情压缩。
+请阅读以下剧本（${epTitle}），输出结构化 JSON，字段如下：
+{
+  "集型": "对话对峙集|动作冲突集|群像反应集|情感戏",
+  "集型理由": "一句话判定理由",
+  "人物": [{"名字":"","锚点":"永久性面部特征（如左眉疤），禁止服饰/发型/身材"}],
+  "场景": ["场景名（含时间光线氛围）"],
+  "台词总览": [{"序号":1,"人物":"","台词":"原文","字数":0,"情绪":"","语速":3.5,"台词时长":0}],
+  "动作总览": [{"序号":1,"人物":"","动作":"","动作时长":0}],
+  "情绪曲线": "温馨→感慨→坚定（箭头链）",
+  "核心道具": [{"名称":"","铺垫":"","引爆":""}]
+}
+要求：
+- 台词总览按出场顺序排列，台词保留原文不改写、不删减关键句；字数不含标点仅汉字/字母/数字；语速按四档（喃喃3/常态3.5/对抗4/惊呼5 字/秒）；台词时长=字数÷语速精确到0.1s。
+- 动作总览列出主要动作，动作时长按单动作1.5-2s、连续动作2.5-3s。
+- 集型用于机位策略（对话对峙/动作冲突/群像反应/情感戏）。
+- 人物锚点只记永久性面部特征（如左眉疤），禁止服饰/发型/身材。
+- 只输出 JSON。
+
+【剧本正文】
+${text}`;
+
+const PROMPT_PLAN = (epTitle, compress, text) => `你是 AI 真人剧分镜流水线的第二步：断点规划（模板E）。
+依据剧情压缩信息与剧本原文，把 ${epTitle} 切成 N 个断点（即生成片段）。每个断点按「满负荷打包」原则尽量压到 26~29.5s（收尾段可 15~20s），全部 ≤30 秒。
+输出 JSON：
+{
+  "断点": [
+    {"id":1,"内容摘要":"一句话","台词时长":0,"动作时长":0,"总时长":0,"包含台词":["人物：台词（原文摘录）"]}
+  ],
+  "合计": 0,
+  "说明": "打包或跨片段说明"
+}
+要求：
+- 总时长 = 台词时长 + 动作时长 + 呼吸余量（每句台词 0.2~0.5s），精确到 0.1s，逐项现算。
+- 台词时长按语速四档计算（喃喃3/常态3.5/对抗4/惊呼5 字/秒），字数不含标点仅汉字/字母/数字。
+- 断点切在语义完整处；长台词跨片段时在「说明」标注「语义断点拆分·跨片段」与「语音连续不中断」。
+- 只输出 JSON。
+
+【剧情压缩】
+${JSON.stringify(compress)}
+
+【剧本原文】
+${text}`;
+
+const PROMPT_SHOT = (epTitle, bp, ctx) => `你是 AI 真人剧分镜流水线的第三步：逐断点出分镜（模板E · 导演十五规则）。
+请为 ${epTitle} 的【断点${bp.id}】生成分镜头脚本。该断点内容：${bp.内容摘要}（本断点计划总时长 ${bp.总时长}s）。
+输出 JSON：
+{
+  "镜头": [
+    {
+      "镜头号": "${bp.id}-1",
+      "转场": "硬切",
+      "景别": "近景→特写·面部（人物名）",
+      "机位": "机位三问答案：视角/突出/力量（如：正面·突出表情·主角更有力量，低角度仰拍）",
+      "运镜": "缓慢推进（slow dolly in），正常速度",
+      "时长": 0.0,
+      "画面内容": "动作/表情肌肉生理细节/走位/终点态/灯光光变点",
+      "台词": "人物：台词（无则空字符串）",
+      "情绪标签": "[gentle whisper]（无台词可空）",
+      "字数": 0,
+      "语速": 3.5,
+      "台词时长": 0.0,
+      "视觉建议": "一句构图/光线/色彩处理建议"
+    }
+  ]
+}
+要求：
+- 本断点所有镜头时长之和 = 断点总时长（±0.5s）。
+- 「运镜」字段只写手法与速度（如 正常速度/1.2倍速），禁止出现任何秒数；镜头时长只写在「时长」字段，全片只标注一次。
+- 「画面内容」禁止描述人物的服饰、发型、身材体型（如短打、束发、矮壮）；只写动作、表情、肌肉生理细节、走位、终点态、灯光光变点。
+- 「台词」字段只写「人物：台词原文」，禁止附加语速/时长信息；语速与时长只出现在「字数/语速/台词时长」字段。
+- 有台词镜头时长 = 台词时长 + 0.2~0.5s 呼吸余量；长台词超 8s 按五种细分手法拆镜，切点写明理由；单镜头台词 8-20 字为宜。
+- 每镜头必答机位三问（写入机位字段）；运镜中英双语；情绪用物理指令表达；动作写终点态；同一角色跨镜头用角色名保持身份与动作连续（视频生成以人物参考图锁定外貌）。
+- 关键节点台词完整；一句台词未说完下一个人不得接话。
+- 台词必须与「本断点台词原文」一致，不得改写、不得删减关键句。
+- 只输出 JSON。
+
+【剧情压缩（集型/角色/情绪曲线/本断点台词原文）】
+${JSON.stringify(ctx)}`;
+
+/* 分镜阶段上下文：只传必要信息，不重复传整集全文（省 token 的关键） */
+function buildShotContext(compress, bp){
+  return {
+    集型: compress.集型 || "",
+    集型理由: compress.集型理由 || "",
+    角色: (compress.人物 || []).map(p=>p.名字),
+    情绪曲线: compress.情绪曲线 || "",
+    本断点台词原文: (bp.包含台词 || [])
+  };
+}
+
+/* ========== 流水线执行 ========== */
+async function ensureKey(){
+  if (!getKey()){ showKeyModal(); return false; }
+  return true;
+}
+function effortLabel(){
+  const map = { off:"思考关闭", low:"思考·低", medium:"思考·中", high:"思考·高" };
+  return map[state.effort] || map.off;
+}
+async function runStep1(){
+  const ep = curEp();
+  if (!ep) return;
+  if (!(await ensureKey())) return;
+  state.running = "step1";
+  state.abortCtrl = new AbortController();
+  const b1 = $("btnRun1"); b1.disabled = true; b1.textContent = "取消";
+  $("pipeState").textContent = "剧情压缩中";
+  log("→ 压缩「" + ep.title + "」（" + curModel() + " · " + effortLabel() + "）", "info");
+  try {
+    const content = await callDeepSeek([
+      { role:"system", content: buildSystem() },
+      { role:"user", content: PROMPT_COMPRESS(ep.title, ep.text) }
+    ], { json:true, temperature:0.3, maxTokens:4000 });
+    const data = safeParse(content);
+    if (!data || !data.台词总览) throw new Error("压缩结果解析失败，请重试");
+    if (!data.集型) data.集型 = "对话对峙集";
+    if (!data.人物) data.人物 = [];
+    if (!data.场景) data.场景 = [];
+    if (!data.动作总览) data.动作总览 = [];
+    if (!data.核心道具) data.核心道具 = [];
+    state.comp[ep.id] = data;
+    persist();
+    log("✓ 压缩完成：台词 " + data.台词总览.length + " 条 / 动作 " + data.动作总览.length + " 条 / 集型「" + data.集型 + "」", "ok");
+    toast("剧情压缩完成", "ok");
+    refreshPipeline();
+  } catch(e){
+    if (e.message === "PAUSED"){ log("已取消压缩", "info"); }
+    else { log("✗ 压缩失败：" + e.message, "err"); toast(e.message, "err"); }
+  } finally {
+    b1.disabled = false; b1.textContent = "生成";
+    state.running = null;
+    refreshPipeline();
+  }
+}
+async function runStep2(){
+  const ep = curEp();
+  if (!ep) return;
+  if (!(await ensureKey())) return;
+  state.running = "step2";
+  state.abortCtrl = new AbortController();
+  const b2 = $("btnRun2"); b2.disabled = true; b2.textContent = "取消";
+  $("pipeState").textContent = "断点规划中";
+  log("→ 断点规划「" + ep.title + "」", "info");
+  try {
+    const content = await callDeepSeek([
+      { role:"system", content: buildSystem() },
+      { role:"user", content: PROMPT_PLAN(ep.title, state.comp[ep.id], ep.text) }
+    ], { json:true, temperature:0.3, maxTokens:3000 });
+    const data = safeParse(content);
+    if (!data || !Array.isArray(data.断点) || !data.断点.length) throw new Error("断点规划解析失败，请重试");
+    state.plans[ep.id] = data;
+    persist();
+    log("✓ 断点规划完成：共 " + data.断点.length + " 个断点，合计 " + data.合计 + "s", "ok");
+    toast("断点规划完成", "ok");
+    refreshPipeline();
+  } catch(e){
+    if (e.message === "PAUSED"){ log("已取消断点规划", "info"); }
+    else { log("✗ 断点规划失败：" + e.message, "err"); toast(e.message, "err"); }
+  } finally {
+    b2.disabled = false; b2.textContent = "生成";
+    state.running = null;
+    refreshPipeline();
+  }
+}
+async function runStep3(){
+  const ep = curEp();
+  if (!ep) return;
+  if (!(await ensureKey())) return;
+  state.paused = false;
+  state.running = "step3";
+  state.abortCtrl = new AbortController();
+  const plan = state.plans[ep.id];
+  const compress = state.comp[ep.id];
+  const b3 = $("btnRun3"); b3.disabled = true; b3.textContent = "生成中…";
+  const pauseBtn = $("btnPause"); pauseBtn.style.display = ""; pauseBtn.textContent = "暂停";
+  const done = state.shots[ep.id] || {};
+  const ttl = plan.断点.length;
+  let doneN = plan.断点.filter(bp => done[bp.id] && done[bp.id].length).length;
+  $("pipeState").textContent = "逐断点分镜 " + doneN + "/" + ttl;
+  log("→ 逐断点生成分镜「" + ep.title + "」，共 " + ttl + " 断点" + (doneN ? "（续跑 " + doneN + "）" : ""), "info");
+  for (const bp of plan.断点){
+    if (state.paused){ log("⏸ 已暂停，剩余断点可点「继续生成」续跑", "info"); break; }
+    if (done[bp.id] && done[bp.id].length) continue;
+    setProg(doneN / ttl);
+    log("   断点" + bp.id + " 生成中…（" + bp.内容摘要 + "）", "info");
+    try {
+      const ctx = buildShotContext(compress, bp);
+      const content = await callDeepSeek([
+        { role:"system", content: buildSystem() },
+        { role:"user", content: PROMPT_SHOT(ep.title, bp, ctx) }
+      ], { json:true, temperature:0.6, maxTokens:6000 });
+      const data = safeParse(content);
+      if (!data || !Array.isArray(data.镜头) || !data.镜头.length) throw new Error("断点" + bp.id + "镜头解析失败");
+      done[bp.id] = data.镜头;
+      state.shots[ep.id] = done;
+      persist();
+      doneN++;
+      $("pipeState").textContent = "逐断点分镜 " + doneN + "/" + ttl;
+      log("   ✓ 断点" + bp.id + "：镜头 " + data.镜头.length + " 个", "ok");
+    } catch(e){
+      if (e.message === "PAUSED"){ log("⏸ 断点" + bp.id + "请求已中止（进度已保存）", "info"); break; }
+      log("   ✗ 断点" + bp.id + "失败：" + e.message + "（可从该断点继续）", "err");
+      toast("断点" + bp.id + "失败：" + e.message, "err");
+      break;
+    }
+  }
+  setProg(doneN >= ttl ? 1 : doneN/ttl);
+  if (doneN >= ttl){ log("✓ 全部分镜生成完成", "ok"); pauseBtn.style.display = "none"; }
+  else if (!state.paused) pauseBtn.style.display = "none";
+  b3.disabled = false; b3.textContent = "生成";
+  state.running = null;
+  refreshPipeline();
+}
+
+/* ========== 中栏渲染：概览 ========== */
+function renderOverview(){
+  const box = $("overview"); const ep = curEp();
+  if (!ep){ box.innerHTML = '<div class="hint">选择剧本集数后开始流水线。</div>'; return; }
+  const c = state.comp[ep.id];
+  if (!c){
+    box.innerHTML = '<div class="hint">「剧情压缩」未生成。点击中栏①生成。</div>';
+    return;
+  }
+  let h = "";
+  h += '<div class="stat-grid" style="margin-bottom:10px">';
+  h += '<div class="stat"><div class="k">集型</div><div class="v" style="color:var(--accent)">' + esc(c.集型) + '</div></div>';
+  h += '<div class="stat"><div class="k">台词</div><div class="v">' + c.台词总览.length + ' 条</div></div>';
+  h += '<div class="stat"><div class="k">动作</div><div class="v">' + c.动作总览.length + ' 条</div></div>';
+  h += '<div class="stat"><div class="k">情绪曲线</div><div class="v" style="font-size:11px;font-family:inherit">' + esc(c.情绪曲线 || "—") + '</div></div>';
+  h += '</div>';
+  h += '<div style="font-size:12px;color:var(--muted)">' + esc(c.集型理由 || "") + '</div>';
+  if (c.人物 && c.人物.length){
+    h += '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--blue)">人物锚点（' + c.人物.length + '）</summary><div style="margin-top:6px">';
+    c.人物.forEach(p=>{ h += '<div style="font-size:12px;margin-bottom:5px"><b>' + esc(p.名字) + '</b>：<span style="color:var(--muted)">' + esc(p.锚点||"") + '</span></div>'; });
+    h += '</div></details>';
+  }
+  if (c.核心道具 && c.核心道具.length){
+    h += '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--blue)">核心道具（' + c.核心道具.length + '）</summary><div style="margin-top:6px">';
+    c.核心道具.forEach(p=>{ h += '<div style="font-size:12px;margin-bottom:5px"><b>' + esc(p.名称) + '</b>：<span style="color:var(--muted)">铺垫 ' + esc(p.铺垫||"—") + ' · 引爆 ' + esc(p.引爆||"—") + '</span></div>'; });
+    h += '</div></details>';
+  }
+  box.innerHTML = h;
+}
+
+/* ========== 中栏渲染：断点规划 ========== */
+function renderBpList(){
+  const box = $("bpList"); const ep = curEp();
+  if (!ep){ box.innerHTML = '<div class="hint">—</div>'; $("bpSum").textContent = "—"; return; }
+  const plan = state.plans[ep.id];
+  if (!plan){ box.innerHTML = '<div class="hint">「断点规划」未生成。</div>'; $("bpSum").textContent = "—"; return; }
+  let h = '<table class="summary-table"><colgroup><col style="width:8%"><col style="width:44%"><col style="width:16%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr><th>断点</th><th>内容</th><th>台词</th><th>动作</th><th>总时长</th></tr></thead><tbody>';
+  plan.断点.forEach(bp=>{
+    h += '<tr><td class="mono">' + bp.id + '</td><td>' + esc(bp.内容摘要) + '</td><td class="mono">' + fmtSec(bp.台词时长) + '</td><td class="mono">' + fmtSec(bp.动作时长) + '</td><td class="mono" style="color:var(--accent)">' + fmtSec(bp.总时长) + '</td></tr>';
+  });
+  h += '<tr><td colspan="4" style="text-align:right;color:var(--muted)">合计</td><td class="mono" style="color:var(--accent);font-weight:700">' + fmtSec(plan.合计) + '</td></tr>';
+  h += '</tbody></table>';
+  if (plan.说明) h += '<div class="hint" style="margin-top:6px">' + esc(plan.说明) + '</div>';
+  box.innerHTML = h;
+  $("bpSum").textContent = plan.断点.length + " 断点 · " + fmtSec(plan.合计);
+}
+/* ========== 右栏渲染：分镜镜头表 ========== */
+async function genBreakpoint(ep, bp){
+  const ctx = buildShotContext(state.comp[ep.id], bp);
+  const content = await callDeepSeek([
+    { role:"system", content: buildSystem() },
+    { role:"user", content: PROMPT_SHOT(ep.title, bp, ctx) }
+  ], { json:true, temperature:0.6, maxTokens:6000 });
+  const data = safeParse(content);
+  if (!data || !Array.isArray(data.镜头) || !data.镜头.length) throw new Error("断点" + bp.id + "镜头解析失败");
+  return data.镜头;
+}
+function renderShots(){
+  const box = $("shotList"); const ep = curEp();
+  if (!ep){ box.innerHTML = '<div class="empty">选择集数并完成流水线后，分镜镜头显示在这里。</div>'; $("shotCnt").textContent = "0"; return; }
+  const plan = state.plans[ep.id];
+  const shots = state.shots[ep.id];
+  if (!plan){ box.innerHTML = '<div class="empty">「断点规划」未生成。</div>'; $("shotCnt").textContent = "0"; return; }
+  if (!shots || !Object.keys(shots).length){ box.innerHTML = '<div class="empty">点击「逐断点分镜」生成镜头。</div>'; $("shotCnt").textContent = "0"; return; }
+  let n = 0, h = "";
+  plan.断点.forEach(bp=>{
+    const list = shots[bp.id];
+    if (!list || !list.length) return;
+    n += list.length;
+    const act = list.reduce((a,s)=>a+(+s.时长||0),0);
+    h += '<div class="shot-group">';
+    h += '<div class="sg-head"><span class="bp-id">断点'+bp.id+'</span><span class="bp-title">'+esc(bp.内容摘要)+'</span><span class="bp-time">'+fmtSec(act)+' / '+fmtSec(bp.总时长)+'s</span><button class="btn sm ghost" data-regen="'+bp.id+'" style="margin-left:8px">重生成断点</button></div>';
+    h += '<table class="shots"><colgroup><col style="width:5%"><col style="width:6.5%"><col style="width:11%"><col style="width:15%"><col style="width:13%"><col style="width:5.5%"><col style="width:22%"><col style="width:17%"><col style="width:5%"></colgroup>';
+    h += '<thead><tr><th>镜号</th><th>转场</th><th>景别</th><th>机位·角度</th><th>运镜</th><th>时长</th><th>画面内容</th><th>台词</th><th>操作</th></tr></thead><tbody>';
+    list.forEach((s,i)=>{
+      const tag = s.情绪标签 ? s.情绪标签 : "";
+      h += '<tr>';
+      h += '<td><input class="edit" data-f="镜头号" data-i="'+i+'" data-bp="'+bp.id+'" value="'+esc(s.镜头号)+'"></td>';
+      h += '<td><input class="edit" data-f="转场" data-i="'+i+'" data-bp="'+bp.id+'" value="'+esc(s.转场||"硬切")+'"></td>';
+      h += '<td><textarea class="edit" rows="2" data-f="景别" data-i="'+i+'" data-bp="'+bp.id+'">'+esc(s.景别||"")+'</textarea></td>';
+      h += '<td><textarea class="edit" rows="2" data-f="机位" data-i="'+i+'" data-bp="'+bp.id+'">'+esc(s.机位||"")+'</textarea></td>';
+      h += '<td><textarea class="edit" rows="2" data-f="运镜" data-i="'+i+'" data-bp="'+bp.id+'">'+esc(s.运镜||"")+'</textarea></td>';
+      h += '<td><input class="edit" data-f="时长" data-i="'+i+'" data-bp="'+bp.id+'" value="'+esc(s.时长)+'"></td>';
+      h += '<td><textarea class="edit" rows="3" data-f="画面内容" data-i="'+i+'" data-bp="'+bp.id+'">'+esc(s.画面内容||"")+'</textarea></td>';
+      h += '<td><div class="mono" style="margin-bottom:2px">'+esc(tag)+'</div><textarea class="edit" rows="3" data-f="台词" data-i="'+i+'" data-bp="'+bp.id+'">'+esc(s.台词||"")+'</textarea><div class="mono" style="margin-top:2px">'+esc(s.字数??"—")+'字 / '+esc(s.语速??"—")+'字/s / '+fmtSec(s.台词时长)+'s</div></td>';
+      h += '<td><button class="btn sm ghost" data-rg="'+i+'" data-bp="'+bp.id+'">重生成</button></td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+  });
+  if (!n){ box.innerHTML = '<div class="empty">暂无镜头，点击「逐断点分镜」生成。</div>'; $("shotCnt").textContent = "0"; return; }
+  box.innerHTML = h;
+  $("shotCnt").textContent = n;
+  box.querySelectorAll(".edit").forEach(el=>{
+    const f = el.dataset.f, i = +el.dataset.i, bp = el.dataset.bp;
+    el.addEventListener("change", ()=>{
+      const list = state.shots[ep.id][bp];
+      if (list && list[i]){ list[i][f] = el.value; state.shots[ep.id][bp] = list; persist(); renderSummary(); }
+    });
+  });
+  box.querySelectorAll("[data-rg]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const i = +btn.dataset.rg, bp = btn.dataset.bp;
+      if (!(await ensureKey())) return;
+      const bpObj = plan.断点.find(x=>String(x.id)===bp);
+      btn.disabled = true; btn.textContent = "…";
+      log("   重生成 断点" + bp + " 镜头" + (i+1), "info");
+      try {
+        const old = state.shots[ep.id][bp][i];
+        const ctx = buildShotContext(state.comp[ep.id], bpObj);
+        const content = await callDeepSeek([
+          { role:"system", content: buildSystem() },
+          { role:"user", content: PROMPT_SHOT(ep.title, bpObj, ctx) + '\n【附加要求】只重新生成镜头序号 ' + (old.镜头号||(i+1)) + '（现为第 ' + (i+1) + ' 个镜头），其余镜头保持原样。返回 JSON：{"镜头":[{目标镜头对象}]}。' }
+        ], { json:true, temperature:0.6, maxTokens:3000 });
+        const data = safeParse(content);
+        if (!data || !data.镜头 || !data.镜头[0]) throw new Error("重生成解析失败");
+        const list = state.shots[ep.id][bp]; list[i] = data.镜头[0]; state.shots[ep.id][bp] = list;
+        persist(); renderShots(); renderSummary();
+        log("   ✓ 镜头" + (i+1) + "已更新", "ok");
+      } catch(e){ log("   ✗ 重生成失败：" + e.message, "err"); toast(e.message, "err"); }
+      btn.disabled = false; btn.textContent = "重生成";
+    });
+  });
+  box.querySelectorAll("[data-regen]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const bp = btn.dataset.bp;
+      if (!(await ensureKey())) return;
+      const bpObj = plan.断点.find(x=>String(x.id)===bp);
+      btn.disabled = true; btn.textContent = "…";
+      log("   重生成 断点" + bp, "info");
+      try {
+        const list = await genBreakpoint(ep, bpObj);
+        state.shots[ep.id][bp] = list; persist(); renderShots(); renderSummary();
+        log("   ✓ 断点" + bp + "重生成：" + list.length + " 镜头", "ok");
+      } catch(e){ log("   ✗ 重生成失败：" + e.message, "err"); toast(e.message, "err"); }
+      btn.disabled = false; btn.textContent = "重生成断点";
+    });
+  });
+}
+
+/* ========== 台词解析 ========== */
+/* 去掉运镜字段里重复的时长标注（如 "约4.9s"、"4.5ss"），只留手法与速度 */
+function stripDur(t){
+  return String(t || "")
+    .replace(/[约]?\d+(\.\d+)?\s*s+(?![\w/])/g, "")
+    .replace(/[约]?\d+(\.\d+)?\s*秒/g, "")
+    .replace(/[，,]\s*[，,]+/g, "，")
+    .replace(/[，,]\s*$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function splitSpeaker(line){
+  const s = String(line || "");
+  const m = s.match(/^([^：:]{1,12})[：:]\s*([\s\S]*)$/);
+  if (m) return { name:m[1], text:m[2] };
+  return { name:"—", text:s };
+}
+
+/* ========== 右栏渲染：汇总 ========== */
+function renderSummary(){
+  const box = $("summaryList"); const ep = curEp();
+  if (!ep){ box.innerHTML = '<div class="empty">—</div>'; $("sumCnt").textContent = "0"; return; }
+  const plan = state.plans[ep.id];
+  const shots = state.shots[ep.id];
+  if (!plan || !shots){ box.innerHTML = '<div class="empty">完成流水线后自动生成汇总。</div>'; $("sumCnt").textContent = "0"; return; }
+  let h = "";
+  h += '<h3 style="font-size:13px;margin:2px 0 6px;color:var(--blue)">三、总时长统计</h3>';
+  h += '<table class="summary-table"><colgroup><col style="width:8%"><col style="width:32%"><col style="width:10%"><col style="width:15%"><col style="width:15%"><col style="width:20%"></colgroup><thead><tr><th>断点</th><th>内容</th><th>镜头</th><th>计划时长</th><th>实际时长</th><th>偏差</th></tr></thead><tbody>';
+  let ttlN = 0, ttlPlan = 0, ttlAct = 0;
+  plan.断点.forEach(bp=>{
+    const list = shots[bp.id] || [];
+    const act = list.reduce((a,s)=>a+(+s.时长||0),0);
+    ttlN += list.length; ttlPlan += (+bp.总时长||0); ttlAct += act;
+    h += '<tr><td class="mono">'+bp.id+'</td><td>'+esc(bp.内容摘要)+'</td><td class="mono">'+list.length+'</td><td class="mono">'+fmtSec(bp.总时长)+'</td><td class="mono">'+fmtSec(act)+'</td><td class="mono">'+fmtSec(act-(+bp.总时长||0))+'</td></tr>';
+  });
+  h += '<tr><td colspan="2" style="text-align:right;color:var(--muted)">合计</td><td class="mono" style="font-weight:700">'+ttlN+'</td><td class="mono" style="font-weight:700">'+fmtSec(ttlPlan)+'</td><td class="mono" style="font-weight:700;color:var(--accent)">'+fmtSec(ttlAct)+'</td><td class="mono">'+fmtSec(ttlAct-ttlPlan)+'</td></tr>';
+  h += '</tbody></table>';
+  $("sumCnt").textContent = ttlN;
+  const rows = [];
+  plan.断点.forEach(bp=>{
+    (shots[bp.id]||[]).forEach((s,i)=>{
+      if (s.台词){ rows.push({ 镜头:s.镜头号||(bp.id+"-"+(i+1)), sp:splitSpeaker(s.台词), 字数:s.字数, 语速:s.语速, 时长:s.台词时长 }); }
+    });
+  });
+  if (rows.length){
+    h += '<h3 style="font-size:13px;margin:14px 0 6px;color:var(--blue)">四、台词时间分配对照表</h3>';
+    h += '<table class="summary-table"><colgroup><col style="width:10%"><col style="width:12%"><col style="width:38%"><col style="width:10%"><col style="width:12%"><col style="width:18%"></colgroup><thead><tr><th>镜头</th><th>说话人</th><th>台词</th><th>字数</th><th>语速</th><th>时长</th></tr></thead><tbody>';
+    rows.forEach(r=>{
+      h += '<tr><td class="mono">'+esc(r.镜头)+'</td><td>'+esc(r.sp.name)+'</td><td>'+esc(r.sp.text)+'</td><td class="mono">'+(r.字数??"—")+'</td><td class="mono">'+(r.语速??"—")+'</td><td class="mono">'+fmtSec(r.时长)+'</td></tr>';
+    });
+    h += '</tbody></table>';
+  }
+  h += '<h3 style="font-size:13px;margin:14px 0 6px;color:var(--blue)">五、本集镜头角度应用说明</h3>';
+  h += '<table class="summary-table"><colgroup><col style="width:12%"><col style="width:44%"><col style="width:44%"></colgroup><thead><tr><th>镜头</th><th>角度</th><th>景别/构图</th></tr></thead><tbody>';
+  plan.断点.forEach(bp=>{
+    (shots[bp.id]||[]).forEach((s,i)=>{
+      h += '<tr><td class="mono">'+esc(s.镜头号||(bp.id+"-"+(i+1)))+'</td><td>'+esc(s.机位||"—")+'</td><td>'+esc(s.景别||"—")+'</td></tr>';
+    });
+  });
+  h += '</tbody></table>';
+  const vis = [];
+  plan.断点.forEach(bp=>{
+    (shots[bp.id]||[]).forEach(s=>{ if (s.视觉建议 && !vis.includes(s.视觉建议)) vis.push(s.视觉建议); });
+  });
+  if (vis.length){
+    h += '<h3 style="font-size:13px;margin:14px 0 6px;color:var(--blue)">六、本集核心视觉设计建议</h3>';
+    h += '<table class="summary-table"><colgroup><col style="width:10%"><col style="width:90%"></colgroup><thead><tr><th>序号</th><th>处理方式</th></tr></thead><tbody>';
+    vis.forEach((v,i)=>{ h += '<tr><td class="mono">'+(i+1)+'</td><td>'+esc(v)+'</td></tr>'; });
+    h += '</tbody></table>';
+  }
+  box.innerHTML = h;
+}
+
+/* ========== MD 导出（模板E六段） ========== */
+function dramaTitle(){
+  const first = (state.scriptText||"").split("\n").map(x=>x.trim()).find(x=>x && !/^第\s*[0-9一二三四五六七八九十百千零两]+\s*[集回章]/.test(x));
+  return (first || "未命名剧集").slice(0,30);
+}
+function buildMD(){
+  const ep = curEp(); if (!ep) return "";
+  const plan = state.plans[ep.id], compress = state.comp[ep.id], shots = state.shots[ep.id];
+  if (!plan || !compress || !shots) return "";
+  const L = [];
+  L.push("# " + dramaTitle() + " · " + ep.title + " 分镜脚本（模板E · v5导演十五规则）");
+  L.push("");
+  L.push("> 画幅：9:16 竖屏 ｜ 模型：" + state.model + " ｜ 台词字数不含标点（仅汉字/字母/数字）");
+  L.push("");
+  L.push("## 一、人物台词、动作与情绪总结");
+  L.push("");
+  L.push("### （一）台词总览");
+  L.push("| 序号 | 人物 | 台词 | 字数 | 情绪状态 | 语速 | 台词时长 |");
+  L.push("| --- | --- | --- | --- | --- | --- | --- |");
+  (compress.台词总览||[]).forEach(t=>{
+    L.push("| " + t.序号 + " | " + (t.人物||"") + " | " + String(t.台词||"").replace(/\|/g,"\\|") + " | " + t.字数 + " | " + (t.情绪||"") + " | " + t.语速 + " | " + fmtSec(t.台词时长) + " |");
+  });
+  L.push("");
+  L.push("### （二）动作总览");
+  L.push("| 序号 | 人物 | 动作 | 动作时长 |");
+  L.push("| --- | --- | --- | --- |");
+  (compress.动作总览||[]).forEach(t=>{
+    L.push("| " + t.序号 + " | " + (t.人物||"") + " | " + String(t.动作||"").replace(/\|/g,"\\|") + " | " + fmtSec(t.动作时长) + " |");
+  });
+  L.push("");
+  L.push("### （三）情绪曲线");
+  L.push((compress.情绪曲线 || "—"));
+  L.push("");
+  L.push("### （四）断点规划（N 个断点，均 ≤30 秒）");
+  L.push("| 断点 | 内容 | 台词时长 | 动作时长 | 总时长 |");
+  L.push("| --- | --- | --- | --- | --- |");
+  plan.断点.forEach(bp=>{
+    L.push("| " + bp.id + " | " + String(bp.内容摘要||"").replace(/\|/g,"\\|") + " | " + fmtSec(bp.台词时长) + " | " + fmtSec(bp.动作时长) + " | " + fmtSec(bp.总时长) + " |");
+  });
+  L.push("| 合计 | — | — | — | " + fmtSec(plan.合计) + " |");
+  if (plan.说明){ L.push(""); L.push("> 打包说明：" + plan.说明); }
+  L.push("");
+  L.push("## 二、" + ep.title + " 分镜头脚本");
+  L.push("");
+  plan.断点.forEach(bp=>{
+    const list = shots[bp.id] || [];
+    L.push("### 【断点" + bp.id + "】" + (bp.内容摘要||"") + " — 生成片段" + bp.id);
+    L.push("");
+    list.forEach((s,i)=>{
+      const no = s.镜头号 || (bp.id + "-" + (i+1));
+      L.push("【镜头" + no + " · 断点" + bp.id + "】");
+      L.push("转场：" + (s.转场 || "硬切"));
+      L.push("景别/运镜：" + (s.景别||"") + (s.运镜 ? "，" + stripDur(s.运镜) : "") + (s.时长 != null ? "，" + fmtSec(s.时长) : ""));
+      L.push("机位：" + (s.机位 || "—"));
+      L.push("画面内容：" + (s.画面内容 || ""));
+      if (s.台词) L.push("台词：" + (s.情绪标签 ? s.情绪标签 + " " : "") + s.台词);
+      if (s.视觉建议) L.push("视觉建议：" + s.视觉建议);
+      L.push("");
+    });
+    const act = list.reduce((a,s)=>a+(+s.时长||0),0);
+    L.push("【断点" + bp.id + "】（本段共" + fmtSec(act) + "秒，≤30秒）");
+    L.push("");
+  });
+  L.push("## 三、总时长统计");
+  L.push("| 断点 | 内容 | 镜头 | 总时长 |");
+  L.push("| --- | --- | --- | --- |");
+  let ttlN = 0, ttlA = 0;
+  plan.断点.forEach(bp=>{
+    const list = shots[bp.id] || [];
+    const act = list.reduce((a,s)=>a+(+s.时长||0),0);
+    ttlN += list.length; ttlA += act;
+    L.push("| " + bp.id + " | " + String(bp.内容摘要||"").replace(/\|/g,"\\|") + " | " + list.length + " | " + fmtSec(act) + " |");
+  });
+  L.push("| 合计 | — | " + ttlN + " 个镜头 / " + plan.断点.length + " 个片段 / " + fmtSec(ttlA) + " |");
+  L.push("");
+  L.push("## 四、台词时间分配对照表");
+  L.push("| 镜头 | 说话人 | 台词 | 字数 | 语速 | 时长 |");
+  L.push("| --- | --- | --- | --- | --- | --- |");
+  plan.断点.forEach(bp=>{
+    (shots[bp.id]||[]).forEach((s,i)=>{
+      if (!s.台词) return;
+      const sp = splitSpeaker(s.台词);
+      L.push("| " + (s.镜头号 || (bp.id + "-" + (i+1))) + " | " + sp.name + " | " + String(sp.text).replace(/\|/g,"\\|") + " | " + (s.字数 ?? "—") + " | " + (s.语速 ?? "—") + " | " + fmtSec(s.台词时长) + " |");
+    });
+  });
+  L.push("");
+  L.push("## 五、本集镜头角度应用说明");
+  L.push("| 镜头 | 角度 | 理由 |");
+  L.push("| --- | --- | --- |");
+  plan.断点.forEach(bp=>{
+    (shots[bp.id]||[]).forEach((s,i)=>{
+      L.push("| " + (s.镜头号 || (bp.id + "-" + (i+1))) + " | " + (s.机位 || "—") + " | " + (s.景别 || "—") + " |");
+    });
+  });
+  L.push("");
+  L.push("## 六、本集核心视觉设计建议");
+  L.push("| 视觉元素 | 处理方式 |");
+  L.push("| --- | --- |");
+  const vis = [];
+  plan.断点.forEach(bp=>{ (shots[bp.id]||[]).forEach(s=>{ if (s.视觉建议 && !vis.includes(s.视觉建议)) vis.push(s.视觉建议); }); });
+  vis.forEach((v,i)=>{ L.push("| " + (i+1) + " | " + String(v).replace(/\|/g,"\\|") + " |"); });
+  L.push("");
+  L.push("全剧分镜脚本已全部完成。");
+  return L.join("\n");
+}
+function exportMD(){
+  const md = buildMD();
+  if (!md){ toast("没有可导出的内容（需先完成流水线）", "err"); return; }
+  const ep = curEp();
+  const fn = (dramaTitle() + "_" + (ep ? ep.title : "分镜") + "_分镜脚本.md").replace(/[\\/:*?"<>|]/g, "_");
+  const blob = new Blob([md], { type:"text/markdown;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = fn;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 300);
+  log("↓ 已导出 " + fn, "ok");
+  toast("已导出 " + fn, "ok");
+}
+function copyMD(){
+  const md = buildMD();
+  if (!md){ toast("没有可复制的内容", "err"); return; }
+  navigator.clipboard.writeText(md).then(()=>{
+    toast("MD 已复制到剪贴板", "ok");
+  }).catch(()=> toast("复制失败，可切到「MD 预览」手动复制", "err"));
+}
+
+/* ========== 初始化 ========== */
+function init(){
+  renderRules();
+  $("effortSel").value = state.effort;
+  bindEvents();
+  renderEpList();
+  renderTokens();
+  refreshPipeline();
+  $("btnParseEp").disabled = !state.scriptText.trim();
+}
+init();
+</script>
+</body>
+</html>

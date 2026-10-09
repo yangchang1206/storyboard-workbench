@@ -1,2 +1,34 @@
-# storyboard-workbench
-AI真人剧分镜工作台 · 单文件本地网页应用（模板E · 导演十五规则 v5）| Storyboard Workbench for AI drama — upload script, plan breakpoints, generate shots, export Markdown
+# 分镜工作台 · AI真人剧导演
+
+单文件本地网页应用：上传剧本 → 智能分集 → 三步流水线（剧情压缩 → 断点规划 → 逐断点分镜）→ 导出模板E六段 Markdown 分镜脚本。
+
+## 特性
+
+- **纯本地运行**：浏览器打开 `分镜工作台.html` 即用，数据不出本机
+- **直连 DeepSeek API**（OpenAI 兼容协议）：`deepseek-flash` / `deepseek-v4-pro`，思考强度可调（关闭/低/中/高）
+- **导演十五规则（v5）可开关**：肌肉导演法、动作链拆解、机位三问、台词情绪标签、动作终点态、机位比例控制、角色锚点锁定、语速多档化、灯光剧情变量、集型机位策略、跨片段台词连续性、运镜双语标注、道具符号系统、走位叙事、满负荷打包
+- **模板E 口径**：断点即生成片段（≤30s，满负荷打包 26~29.5s）、语速四档（喃喃3/常态3.5/对抗4/惊呼5 字每秒）、台词字数不含标点（仅汉字/字母/数字）
+- **分镜表可编辑**：单镜头/整断点重生成，生成可暂停/继续/取消
+- **成本透明**：按官方价格与高峰/空闲时段实时估算 token 费用
+- **不描述服饰/身材**：画面内容只写动作、表情、生理细节，外貌由人物参考图锁定
+
+## 使用
+
+1. 在 [platform.deepseek.com](https://platform.deepseek.com) 创建 API Key
+2. 打开 `分镜工作台.html`，顶部填入 API Key（仅存本机浏览器 localStorage）
+3. 粘贴或上传剧本（txt / docx / pdf），「智能分集」后勾选目标集数
+4. 依次执行：剧情压缩 → 断点规划 → 逐断点分镜
+5. 「导出 MD」获得模板E六段完整分镜脚本（一、台词/动作/情绪总结 · 二、分镜头脚本 · 三、总时长统计 · 四、台词时间分配对照表 · 五、镜头角度应用说明 · 六、核心视觉设计建议）
+
+## 技术说明
+
+- 单 HTML 自包含（内联 CSS/JS），无构建、无依赖；docx/pdf 解析按需从 jsDelivr 加载
+- DeepSeek 接口：`https://api.deepseek.com/chat/completions`，模型 `deepseek-flash`（快·省）/ `deepseek-v4-pro`（强·贵）
+- 思考模式参数：`thinking: {type: enabled/disabled}` + `reasoning_effort: low/high/max`
+- 流水线分三阶段请求，分镜阶段只传断点上下文（不重复传整集全文），控制 token 成本
+
+## 规划中
+
+- BGM 配乐清单（按情绪弧线从素材开头/中间/高潮/结尾截取）
+- 多集批量流水线
+- 多模型接入
