@@ -844,6 +844,8 @@ const PROMPT_PLAN = (epTitle, compress, text) => `你是 AI 真人剧分镜流�
 }
 要求：
 - 总时长 = 台词时长 + 动作时长 + 呼吸余量（每句台词 0.2~0.5s），精确到 0.1s，逐项现算。
+- 【硬约束】每个断点「总时长」必须 ≤30.0s；任一断点 >30s 必须拆成两个或以上断点，拆分结果必须直接体现在「断点」数组里（禁止只在「说明」文字里推演拆分而数组不拆）。
+- 输出前自检：遍历断点数组，确认每个断点 总时长 ≤30.0s；不满足就重新切分后再输出。
 - 台词时长按语速四档计算（喃喃3/常态3.5/对抗4/惊呼5 字/秒），字数不含标点仅汉字/字母/数字。
 - 断点切在语义完整处；长台词跨片段时在「说明」标注「语义断点拆分·跨片段」与「语音连续不中断」。
 - 只输出 JSON。
@@ -961,6 +963,23 @@ async function runStep2(){
     ], { json:true, temperature:0.3, maxTokens:3000 });
     const data = safeParse(content);
     if (!data || !Array.isArray(data.断点) || !data.断点.length) throw new Error("断点规划解析失败，请重试");
+    /* 硬校验：断点总时长 >30s 自动反馈重规划一次（模型常把拆分只写进说明而数组不拆） */
+    let over = (data.断点||[]).filter(b => (+b.总时长||0) > 30.0);
+    if (over.length){
+      log("⚠ 规划自检：断点 " + over.map(b=>b.id+"("+fmtSec(b.总时长)+"s)").join("、") + " 超 30s，自动反馈重规划…", "err");
+      const retry = await callDeepSeek([
+        { role:"system", content: buildSystem() },
+        { role:"user", content: PROMPT_PLAN(ep.title, state.comp[ep.id], ep.text) },
+        { role:"user", content: "上次规划的断点：" + JSON.stringify(data.断点.map(b=>({id:b.id,内容摘要:b.内容摘要,总时长:b.总时长}))) + "。其中断点" + over.map(b=>b.id).join("、") + "总时长超过 30 秒硬上限。请重新切分：把超时长断点拆成多个语义完整的断点，每个断点总时长必须 ≤30.0s（尽量 26~29.5s）。拆分结果必须直接写进「断点」数组（不得只写在说明里），输出完整 JSON（含全部断点）。" }
+      ], { json:true, temperature:0.3, maxTokens:3000 });
+      const data2 = safeParse(retry);
+      if (data2 && Array.isArray(data2.断点) && data2.断点.length){
+        const still = data2.断点.filter(b => (+b.总时长||0) > 30.0);
+        if (still.length) log("⚠ 重规划后仍超限：断点 " + still.map(b=>b.id+"("+fmtSec(b.总时长)+"s)").join("、") + "，请人工核对拆分", "err");
+        else log("✓ 重规划后全部断点 ≤30s", "ok");
+        data = data2;
+      }
+    }
     state.plans[ep.id] = data;
     persist();
     log("✓ 断点规划完成：共 " + data.断点.length + " 个断点，合计 " + data.合计 + "s", "ok");
@@ -1063,7 +1082,8 @@ function renderBpList(){
   if (!plan){ box.innerHTML = '<div class="hint">「断点规划」未生成。</div>'; $("bpSum").textContent = "—"; return; }
   let h = '<table class="summary-table"><colgroup><col style="width:8%"><col style="width:44%"><col style="width:16%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr><th>断点</th><th>内容</th><th>台词</th><th>动作</th><th>总时长</th></tr></thead><tbody>';
   plan.断点.forEach(bp=>{
-    h += '<tr><td class="mono">' + bp.id + '</td><td>' + esc(bp.内容摘要) + '</td><td class="mono">' + fmtSec(bp.台词时长) + '</td><td class="mono">' + fmtSec(bp.动作时长) + '</td><td class="mono" style="color:var(--accent)">' + fmtSec(bp.总时长) + '</td></tr>';
+    const over = (+bp.总时长||0) > 30.0;
+    h += '<tr style="'+(over?'background:rgba(255,90,90,.12);':'')+'"><td class="mono">' + bp.id + '</td><td>' + esc(bp.内容摘要) + '</td><td class="mono">' + fmtSec(bp.台词时长) + '</td><td class="mono">' + fmtSec(bp.动作时长) + '</td><td class="mono" style="color:'+(over?'#ff6b6b':'var(--accent)')+';font-weight:'+(over?'700':'400')+'">' + fmtSec(bp.总时长) + (over?' ⚠':'') + '</td></tr>';
   });
   h += '<tr><td colspan="4" style="text-align:right;color:var(--muted)">合计</td><td class="mono" style="color:var(--accent);font-weight:700">' + fmtSec(plan.合计) + '</td></tr>';
   h += '</tbody></table>';
@@ -1095,8 +1115,9 @@ function renderShots(){
     if (!list || !list.length) return;
     n += list.length;
     const act = list.reduce((a,s)=>a+(+s.时长||0),0);
+    const over30 = act > 30.0;
     h += '<div class="shot-group">';
-    h += '<div class="sg-head"><span class="bp-id">断点'+bp.id+'</span><span class="bp-title">'+esc(bp.内容摘要)+'</span><span class="bp-time">'+fmtSec(act)+' / '+fmtSec(bp.总时长)+'s</span><button class="btn sm ghost" data-regen="'+bp.id+'" style="margin-left:8px">重生成断点</button></div>';
+    h += '<div class="sg-head"><span class="bp-id">断点'+bp.id+'</span><span class="bp-title">'+esc(bp.内容摘要)+'</span><span class="bp-time" style="'+(over30?'color:#ff6b6b;font-weight:700':'')+'">'+fmtSec(act)+' / '+fmtSec(bp.总时长)+'s'+(over30?' ⚠超30s':'')+'</span><button class="btn sm ghost" data-regen="'+bp.id+'" style="margin-left:8px">重生成断点</button></div>';
     h += '<table class="shots"><colgroup><col style="width:5%"><col style="width:6.5%"><col style="width:11%"><col style="width:15%"><col style="width:13%"><col style="width:5.5%"><col style="width:22%"><col style="width:17%"><col style="width:5%"></colgroup>';
     h += '<thead><tr><th>镜号</th><th>转场</th><th>景别</th><th>机位·角度</th><th>运镜</th><th>时长</th><th>画面内容</th><th>台词</th><th>操作</th></tr></thead><tbody>';
     list.forEach((s,i)=>{
@@ -1197,8 +1218,9 @@ function renderSummary(){
   plan.断点.forEach(bp=>{
     const list = shots[bp.id] || [];
     const act = list.reduce((a,s)=>a+(+s.时长||0),0);
+    const over30 = act > 30.0;
     ttlN += list.length; ttlPlan += (+bp.总时长||0); ttlAct += act;
-    h += '<tr><td class="mono">'+bp.id+'</td><td>'+esc(bp.内容摘要)+'</td><td class="mono">'+list.length+'</td><td class="mono">'+fmtSec(bp.总时长)+'</td><td class="mono">'+fmtSec(act)+'</td><td class="mono">'+fmtSec(act-(+bp.总时长||0))+'</td></tr>';
+    h += '<tr style="'+(over30?'background:rgba(255,90,90,.12);':'')+'"><td class="mono">'+bp.id+'</td><td>'+esc(bp.内容摘要)+'</td><td class="mono">'+list.length+'</td><td class="mono">'+fmtSec(bp.总时长)+'</td><td class="mono" style="color:'+(over30?'#ff6b6b':'inherit')+';font-weight:'+(over30?'700':'400')+'">'+fmtSec(act)+(over30?' ⚠':'')+'</td><td class="mono">'+fmtSec(act-(+bp.总时长||0))+'</td></tr>';
   });
   h += '<tr><td colspan="2" style="text-align:right;color:var(--muted)">合计</td><td class="mono" style="font-weight:700">'+ttlN+'</td><td class="mono" style="font-weight:700">'+fmtSec(ttlPlan)+'</td><td class="mono" style="font-weight:700;color:var(--accent)">'+fmtSec(ttlAct)+'</td><td class="mono">'+fmtSec(ttlAct-ttlPlan)+'</td></tr>';
   h += '</tbody></table>';
@@ -1251,6 +1273,14 @@ function buildMD(){
   L.push("# " + dramaTitle() + " · " + ep.title + " 分镜脚本（模板E · v5导演十五规则）");
   L.push("");
   L.push("> 画幅：9:16 竖屏 ｜ 模型：" + state.model + " ｜ 台词字数不含标点（仅汉字/字母/数字）");
+  /* 审查核对：实际镜头合计超 30s 的断点在导出时醒目警告 */
+  const overBps = plan.断点.map(bp=>{
+    const list = shots[bp.id] || [];
+    return { id:bp.id, act: list.reduce((a,s)=>a+(+s.时长||0),0) };
+  }).filter(x => x.act > 30.0);
+  if (overBps.length){
+    L.push("> ⚠️ **审查警告**：断点 " + overBps.map(x=>x.id+"（"+fmtSec(x.act)+"s）").join("、") + " 实际时长超过 30 秒生成上限，需拆分为两个生成片段后再生成视频。");
+  }
   L.push("");
   L.push("## 一、人物台词、动作与情绪总结");
   L.push("");
@@ -1298,7 +1328,8 @@ function buildMD(){
       L.push("");
     });
     const act = list.reduce((a,s)=>a+(+s.时长||0),0);
-    L.push("【断点" + bp.id + "】（本段共" + fmtSec(act) + "秒，≤30秒）");
+    if (act > 30.0) L.push("【断点" + bp.id + "】（本段共" + fmtSec(act) + "秒）⚠️ 超过 30 秒上限，需拆分后再生成视频");
+    else L.push("【断点" + bp.id + "】（本段共" + fmtSec(act) + "秒，≤30秒）");
     L.push("");
   });
   L.push("## 三、总时长统计");
