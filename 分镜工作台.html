@@ -194,8 +194,20 @@
 
 <main class="layout">
 
-  <!-- ===== 左栏：剧本 ===== -->
+  <!-- ===== 左栏：项目历史 ===== -->
   <div class="col col-left">
+    <section class="panel">
+      <div class="ph"><span class="ph-step">0</span><span class="ph-title">项目历史</span><span class="ph-meta" id="projCnt">0 个</span></div>
+      <div class="pb">
+        <div id="projList" style="max-height:180px;overflow:auto"></div>
+        <div class="upload-row" style="margin-top:6px">
+          <button class="btn sm primary" id="btnNewProj">+ 新项目</button>
+          <button class="btn sm" id="btnExportProj">导出备份</button>
+          <button class="btn sm filebtn" id="btnImportProj">导入备份<input type="file" id="projFile" accept=".json"></button>
+        </div>
+      </div>
+    </section>
+
     <section class="panel">
       <div class="ph"><span class="ph-step">1</span><span class="ph-title">剧本导入</span><span class="ph-meta" id="scriptLen">0 字</span></div>
       <div class="pb">
@@ -364,28 +376,147 @@ function safeParse(text){
 async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 /* ========== 状态 ========== */
-let state = { apiKey:"", model:"deepseek-flash", effort:"off", scriptText:"", eps:[], sel:[], comp:{}, plans:{}, shots:{}, rules:{r1:1,r2:1,r3:1,r4:1,r5:1,r6:1,r7:1,r8:1,r9:1,r10:1,r11:1,r12:1,r13:1,r14:1,r15:1}, tokIn:0, tokOut:0, paused:false, abortCtrl:null, running:null };
+let state = { apiKey:"", model:"deepseek-flash", effort:"off", scriptText:"", eps:[], sel:[], comp:{}, plans:{}, shots:{}, rules:{r1:1,r2:1,r3:1,r4:1,r5:1,r6:1,r7:1,r8:1,r9:1,r10:1,r11:1,r12:1,r13:1,r14:1,r15:1}, tokIn:0, tokOut:0, paused:false, abortCtrl:null, running:null, projects:[], curId:null };
 try {
   const saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
   if (saved.apiKey) state.apiKey = saved.apiKey;
   if (saved.model) state.model = saved.model === "deepseek-v4-flash" ? "deepseek-flash" : saved.model;
   if (saved.effort) state.effort = saved.effort;
-  if (saved.scriptText) state.scriptText = saved.scriptText;
-  if (saved.eps && saved.eps.length) state.eps = saved.eps;
-  if (saved.sel && saved.sel.length) state.sel = saved.sel;
-  if (saved.comp) state.comp = saved.comp;
-  if (saved.plans) state.plans = saved.plans;
-  if (saved.shots) state.shots = saved.shots;
   if (saved.rules) Object.assign(state.rules, saved.rules);
   if (saved.tokIn) state.tokIn = saved.tokIn;
   if (saved.tokOut) state.tokOut = saved.tokOut;
+  /* 项目迁移：旧版数据（顶层业务字段）→ projects 数组 */
+  let projs = Array.isArray(saved.projects) ? saved.projects : [];
+  if (!projs.length && (saved.scriptText || (saved.eps && saved.eps.length))){
+    const pid = "p" + Date.now();
+    projs = [{ id:pid, name:guessProjName(saved.scriptText), createdAt:Date.now(), updatedAt:Date.now(),
+      scriptText:saved.scriptText||"", eps:saved.eps||[], sel:saved.sel||[], comp:saved.comp||{}, plans:saved.plans||{}, shots:saved.shots||{} }];
+    saved.curId = pid;
+  }
+  state.projects = projs;
+  state.curId = saved.curId || (projs[0] && projs[0].id) || null;
 } catch(e){}
+/* 把当前项目摊开到顶层工作区 */
+(function unfoldCurrent(){
+  const cp = state.projects.find(p=>p.id===state.curId);
+  if (cp){
+    state.scriptText = cp.scriptText||""; state.eps = cp.eps||[]; state.sel = cp.sel||[];
+    state.comp = cp.comp||{}; state.plans = cp.plans||{}; state.shots = cp.shots||{};
+  }
+})();
 function persist(){
   try {
+    syncCurProject();
     const slim = { apiKey:state.apiKey, model:state.model };
     try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-    catch(q){ localStorage.setItem(LS_KEY, JSON.stringify(slim)); log("数据较大，仅保留设置（其余在本页内存中）", "info"); }
+    catch(q){ localStorage.setItem(LS_KEY, JSON.stringify(slim)); log("数据较大，仅保留设置与API Key（项目已在内存，建议立即「导出备份」存档）", "err"); }
   } catch(e){}
+}
+
+/* ========== 项目历史（A 多项目存档 + B JSON 导入导出） ========== */
+function guessProjName(text){
+  const first = String(text||"").split("\n").map(x=>x.trim()).find(x=>x && !/^第\s*[0-9一二三四五六七八九十百千零两]+\s*[集回章]/.test(x));
+  return (first || "未命名项目").slice(0, 20);
+}
+function curProject(){ return state.projects.find(p=>p.id===state.curId) || null; }
+function syncCurProject(){
+  const p = curProject();
+  if (!p) return;
+  p.scriptText = state.scriptText; p.eps = state.eps; p.sel = state.sel;
+  p.comp = state.comp; p.plans = state.plans; p.shots = state.shots;
+  if (!p.name || p.name === "未命名项目") p.name = guessProjName(state.scriptText);
+  p.updatedAt = Date.now();
+}
+function newProject(){
+  if (state.running){ toast("生成进行中，请先取消/暂停再新建项目", "err"); return; }
+  syncCurProject();
+  const pid = "p" + Date.now();
+  state.projects.push({ id:pid, name:"未命名项目", createdAt:Date.now(), updatedAt:Date.now(),
+    scriptText:"", eps:[], sel:[], comp:{}, plans:{}, shots:{} });
+  state.curId = pid;
+  state.scriptText=""; state.eps=[]; state.sel=[]; state.comp={}; state.plans={}; state.shots={};
+  $("scriptText").value = "";
+  $("scriptLen").textContent = "0 字";
+  $("epList").innerHTML = "";
+  $("selBar").style.display = "none";
+  $("btnParseEp").disabled = true;
+  persist(); refreshPipeline(); renderProjList();
+  toast("已新建项目：粘贴新剧本后点「智能分集」", "ok");
+}
+function openProject(pid){
+  if (pid === state.curId) return;
+  if (state.running){ toast("生成进行中，无法切换项目", "err"); return; }
+  syncCurProject();
+  state.curId = pid;
+  const p = curProject();
+  if (p){
+    state.scriptText = p.scriptText||""; state.eps = p.eps||[]; state.sel = p.sel||[];
+    state.comp = p.comp||{}; state.plans = p.plans||{}; state.shots = p.shots||{};
+  }
+  $("scriptText").value = state.scriptText;
+  $("scriptLen").textContent = countChars(state.scriptText) + " 字";
+  persist(); renderEpList(); refreshPipeline(); renderProjList();
+  toast("已切换项目：" + (p ? (p.name||"未命名") : ""), "ok");
+}
+function renderProjList(){
+  const box = $("projList"); if (!box) return;
+  const projs = state.projects || [];
+  $("projCnt").textContent = projs.length + " 个";
+  box.innerHTML = "";
+  if (!projs.length){
+    box.innerHTML = '<div class="hint" style="padding:4px">还没有项目。粘贴剧本 → 智能分集后自动存档。</div>';
+    return;
+  }
+  [...projs].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).forEach(p=>{
+    const d = document.createElement("div");
+    const on = p.id===state.curId;
+    const shotN = Object.keys(p.shots||{}).length;
+    const t = new Date(p.updatedAt || Date.now());
+    const ts = (t.getMonth()+1) + "/" + t.getDate() + " " + String(t.getHours()).padStart(2,"0") + ":" + String(t.getMinutes()).padStart(2,"0");
+    d.style.cssText = "padding:6px 8px;border:1px solid " + (on?"var(--accent)":"var(--border)") + ";border-radius:6px;margin-bottom:6px;cursor:pointer;" + (on?"background:rgba(255,255,255,.05)":"");
+    d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:600">' + esc(p.name||"未命名") + (on?' <span style="color:var(--accent);font-size:11px">· 当前</span>':"") + '</span></div>' +
+      '<div class="hint" style="margin-top:2px">' + (p.eps ? p.eps.length + " 集 · " : "") + shotN + " 个断点镜头 · " + ts + '</div>';
+    d.addEventListener("click", ()=> openProject(p.id));
+    box.appendChild(d);
+  });
+}
+function exportProjectJSON(){
+  syncCurProject();
+  const p = curProject();
+  if (!p){ toast("当前没有项目", "err"); return; }
+  const payload = { app:"storyboard-workbench", version:1, project:p, exportedAt:Date.now() };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+  const a = document.createElement("a");
+  const fname = (p.name || "分镜项目").replace(/[\\/:*?"<>|]/g,"_") + "_" + new Date().toISOString().slice(0,10) + ".json";
+  a.href = URL.createObjectURL(blob);
+  a.download = fname;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 800);
+  toast("已导出备份：" + fname, "ok");
+}
+function importProjectJSON(file){
+  const r = new FileReader();
+  r.onload = ()=>{
+    try {
+      const obj = JSON.parse(r.result);
+      const p = obj.project || obj;
+      if (!p || !Array.isArray(p.eps)) throw new Error("bad file");
+      syncCurProject();
+      p.id = "p" + Date.now();
+      p.name = (p.name || file.name.replace(/\.json$/,"")) + "（导入）";
+      p.createdAt = p.createdAt || Date.now(); p.updatedAt = Date.now();
+      p.scriptText = p.scriptText || ""; p.sel = p.sel || []; p.comp = p.comp || {}; p.plans = p.plans || {}; p.shots = p.shots || {};
+      state.projects.push(p);
+      state.curId = p.id;
+      state.scriptText = p.scriptText; state.eps = p.eps; state.sel = p.sel;
+      state.comp = p.comp; state.plans = p.plans; state.shots = p.shots;
+      $("scriptText").value = state.scriptText;
+      $("scriptLen").textContent = countChars(state.scriptText) + " 字";
+      persist(); renderEpList(); refreshPipeline(); renderProjList();
+      toast("导入成功：" + p.name, "ok");
+    } catch(e){ toast("导入失败：不是有效的项目备份文件", "err"); }
+  };
+  r.readAsText(file);
 }
 
 /* ========== DeepSeek 直连 ========== */
@@ -732,6 +863,15 @@ function bindEvents(){
   });
   $("btnExportMD").addEventListener("click", exportMD);
   $("btnCopyMD").addEventListener("click", copyMD);
+
+  $("btnNewProj").addEventListener("click", newProject);
+  $("btnExportProj").addEventListener("click", exportProjectJSON);
+  $("btnImportProj").addEventListener("click", ()=> $("projFile").click());
+  $("projFile").addEventListener("change", e=>{
+    const f = e.target.files && e.target.files[0];
+    if (f) importProjectJSON(f);
+    e.target.value = "";
+  });
 }
 /* ========== 导演规则库（v5十五规则 · 可开关） ========== */
 const RULES = [
@@ -771,7 +911,14 @@ const SYS_HEAD = `你是资深 AI 真人剧分镜导演，擅长把短剧剧本�
 
 【体态细节底线】主角/反派/关键配角每个出镜镜头至少一个生理细节（踉跄半步/胸口起伏/手垂在身侧微微发抖/喉结滚动），禁止干站干说；群像镜头给 2-3 人分配不同细节，避免集体同姿势。
 
-【特殊视角点缀】每场 1-2 个，必须有叙事逻辑：窗外窥视/镜中倒影/门缝光/地面反射/剪影。`;
+【特殊视角点缀】每场 1-2 个，必须有叙事逻辑：窗外窥视/镜中倒影/门缝光/地面反射/剪影。
+
+【模板E · v6 排版五规范（输出 MD 时必执行）】
+1. 多行式：每镜头字段独立成行（【镜头N·断点N】/转场/景别·运镜/机位/画面内容/台词/情绪标记/视觉建议），禁止把多字段挤成一行。
+2. 断点位置锚点：每个断点组标题下一行写「断点N 位置锚点：…」，写清主要角色大概站位/画布方位（画左/画右/画上/画中/画下/远景）与高低关系。
+3. 断点角色锚点：紧接位置锚点下一行写「断点N 角色锚点：…」，首断点完整列出出场角色永久性面部特征（不写服饰/发型/身材），后续断点用「沿用上一镜——」式收束。
+4. 台词情绪提示词：台词行格式为「台词：人物（情绪提示词）：原文（N字）」，人物名后必须带中文情绪提示词（与台词总览"情绪状态"列一致，如（关切打量）（躲闪心虚）（压火质问）），禁止只写「人物：原文」。
+5. 朴素排版：文档标题一级 #、小节二级 ##、断点组标题用【断点N】行；不用 ###、**加粗**、> 引用块做装饰。`;
 const RULE_TEXT = {
   r1:`【规则一 · 肌肉导演法】情绪用物理指令表达：颧大肌收缩角度/眼轮匝肌状态/鼻翼翕张/手指动作/身体前倾后仰/呼吸节奏/停顿0.X秒/眨眼频率/喉结滚动。禁止空泛形容词。`,
   r2:`【规则二 · 动作链拆解】超过2秒的完整动作拆四步，每步一个镜头：①起始特写·发力点（指节发白/青筋暴起）②过程中景·跟拍（动作轨迹/速度感）③结果特写·落点（升格慢动作/声音强化）④对手反应近景（瞳孔微缩/身体后仰/喉结滚动）。`,
@@ -832,12 +979,12 @@ const PROMPT_COMPRESS = (epTitle, text) => `你是 AI 真人剧分镜流水线�
 【剧本正文】
 ${text}`;
 
-const PROMPT_PLAN = (epTitle, compress, text) => `你是 AI 真人剧分镜流水线的第二步：断点规划（模板E）。
+const PROMPT_PLAN = (epTitle, compress, text) => `你是 AI 真人剧分镜流水线的第二步：断点规划（模板E · v6）。
 依据剧情压缩信息与剧本原文，把 ${epTitle} 切成 N 个断点（即生成片段）。每个断点按「满负荷打包」原则尽量压到 26~29.5s（收尾段可 15~20s），全部 ≤30 秒。
 输出 JSON：
 {
   "断点": [
-    {"id":1,"内容摘要":"一句话","台词时长":0,"动作时长":0,"总时长":0,"包含台词":["人物：台词（原文摘录）"]}
+    {"id":1,"内容摘要":"一句话","台词时长":0,"动作时长":0,"总时长":0,"包含台词":["人物：台词（原文摘录）"],"位置锚点":"本断点主要角色站位/画布方位（画左/画右/画上/画中/画下/远景）与高低关系，一次成句","角色锚点":"首断点完整列出出场角色永久性面部特征（不写服饰/发型/身材）；后续断点写「沿用上一镜——…」并只列本断点新增/变化"}
   ],
   "合计": 0,
   "说明": "打包或跨片段说明"
@@ -848,6 +995,7 @@ const PROMPT_PLAN = (epTitle, compress, text) => `你是 AI 真人剧分镜流�
 - 输出前自检：遍历断点数组，确认每个断点 总时长 ≤30.0s；不满足就重新切分后再输出。
 - 台词时长按语速四档计算（喃喃3/常态3.5/对抗4/惊呼5 字/秒），字数不含标点仅汉字/字母/数字。
 - 断点切在语义完整处；长台词跨片段时在「说明」标注「语义断点拆分·跨片段」与「语音连续不中断」。
+- 每个断点都必须填「位置锚点」与「角色锚点」（v6 排版规范）；位置锚点按本断点实际走位写，角色锚点首断点全列、后续沿用上一镜。
 - 只输出 JSON。
 
 【剧情压缩】
@@ -856,21 +1004,22 @@ ${JSON.stringify(compress)}
 【剧本原文】
 ${text}`;
 
-const PROMPT_SHOT = (epTitle, bp, ctx) => `你是 AI 真人剧分镜流水线的第三步：逐断点出分镜（模板E · 导演十五规则）。
+const PROMPT_SHOT = (epTitle, bp, ctx) => `你是 AI 真人剧分镜流水线的第三步：逐断点出分镜（模板E · v6 排版五规范 · 导演十五规则）。
 请为 ${epTitle} 的【断点${bp.id}】生成分镜头脚本。该断点内容：${bp.内容摘要}（本断点计划总时长 ${bp.总时长}s）。
 输出 JSON：
 {
   "镜头": [
     {
       "镜头号": "${bp.id}-1",
-      "转场": "硬切",
+      "转场": "硬切（切点理由：换说话人）",
       "景别": "近景→特写·面部（人物名）",
       "机位": "机位三问答案：视角/突出/力量（如：正面·突出表情·主角更有力量，低角度仰拍）",
       "运镜": "缓慢推进（slow dolly in），正常速度",
       "时长": 0.0,
       "画面内容": "动作/表情肌肉生理细节/走位/终点态/灯光光变点",
-      "台词": "人物：台词（无则空字符串）",
+      "台词": "人物（情绪提示词）：原文（N字）——人物名后必须带中文情绪提示词，与台词总览情绪列一致；无台词留空字符串",
       "情绪标签": "[gentle whisper]（无台词可空）",
+      "情绪标记": "【情绪词·一句话点题】，如【压火·一字一顿】；无台词可空",
       "字数": 0,
       "语速": 3.5,
       "台词时长": 0.0,
@@ -882,7 +1031,7 @@ const PROMPT_SHOT = (epTitle, bp, ctx) => `你是 AI 真人剧分镜流水线的
 - 本断点所有镜头时长之和 = 断点总时长（±0.5s）。
 - 「运镜」字段只写手法与速度（如 正常速度/1.2倍速），禁止出现任何秒数；镜头时长只写在「时长」字段，全片只标注一次。
 - 「画面内容」禁止描述人物的服饰、发型、身材体型（如短打、束发、矮壮）；只写动作、表情、肌肉生理细节、走位、终点态、灯光光变点。
-- 「台词」字段只写「人物：台词原文」，禁止附加语速/时长信息；语速与时长只出现在「字数/语速/台词时长」字段。
+- 「台词」字段必须按 v6 格式写：人物名后带中文情绪提示词，如「楚景珩（关切打量）：五弟，伤得怎么样？（16字）」；情绪提示词与压缩阶段"情绪"列一致，禁止只写「人物：原文」。
 - 有台词镜头时长 = 台词时长 + 0.2~0.5s 呼吸余量；长台词超 8s 按五种细分手法拆镜，切点写明理由；单镜头台词 8-20 字为宜。
 - 每镜头必答机位三问（写入机位字段）；运镜中英双语；情绪用物理指令表达；动作写终点态；同一角色跨镜头用角色名保持身份与动作连续（视频生成以人物参考图锁定外貌）。
 - 关键节点台词完整；一句台词未说完下一个人不得接话。
@@ -1088,6 +1237,18 @@ function renderBpList(){
   h += '<tr><td colspan="4" style="text-align:right;color:var(--muted)">合计</td><td class="mono" style="color:var(--accent);font-weight:700">' + fmtSec(plan.合计) + '</td></tr>';
   h += '</tbody></table>';
   if (plan.说明) h += '<div class="hint" style="margin-top:6px">' + esc(plan.说明) + '</div>';
+  /* v6 位置锚点 / 角色锚点 */
+  const hasAnchor = plan.断点.some(bp=>bp.位置锚点 || bp.角色锚点);
+  if (hasAnchor){
+    h += '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--blue)">位置/角色锚点（v6）</summary><div style="margin-top:6px">';
+    plan.断点.forEach(bp=>{
+      h += '<div style="font-size:12px;margin-bottom:6px;line-height:1.5"><b>断点' + bp.id + '</b>';
+      if (bp.位置锚点) h += '<br><span style="color:var(--muted)">位置：</span>' + esc(bp.位置锚点);
+      if (bp.角色锚点) h += '<br><span style="color:var(--muted)">角色：</span>' + esc(bp.角色锚点);
+      h += '</div>';
+    });
+    h += '</div></details>';
+  }
   box.innerHTML = h;
   $("bpSum").textContent = plan.断点.length + " 断点 · " + fmtSec(plan.合计);
 }
@@ -1270,60 +1431,67 @@ function buildMD(){
   const plan = state.plans[ep.id], compress = state.comp[ep.id], shots = state.shots[ep.id];
   if (!plan || !compress || !shots) return "";
   const L = [];
-  L.push("# " + dramaTitle() + " · " + ep.title + " 分镜脚本（模板E · v5导演十五规则）");
+  L.push("# " + dramaTitle() + " · " + ep.title + " 分镜脚本（模板E · v6 多行式位置锚点版）");
   L.push("");
-  L.push("> 画幅：9:16 竖屏 ｜ 模型：" + state.model + " ｜ 台词字数不含标点（仅汉字/字母/数字）");
+  L.push("画幅：9:16 竖屏 ｜ 模型：" + state.model + " ｜ 台词字数不含标点（仅汉字/字母/数字）");
   /* 审查核对：实际镜头合计超 30s 的断点在导出时醒目警告 */
   const overBps = plan.断点.map(bp=>{
     const list = shots[bp.id] || [];
     return { id:bp.id, act: list.reduce((a,s)=>a+(+s.时长||0),0) };
   }).filter(x => x.act > 30.0);
   if (overBps.length){
-    L.push("> ⚠️ **审查警告**：断点 " + overBps.map(x=>x.id+"（"+fmtSec(x.act)+"s）").join("、") + " 实际时长超过 30 秒生成上限，需拆分为两个生成片段后再生成视频。");
+    L.push("");
+    L.push("⚠️ 审查警告：断点 " + overBps.map(x=>x.id+"（"+fmtSec(x.act)+"s）").join("、") + " 实际时长超过 30 秒生成上限，需拆分为两个生成片段后再生成视频。");
   }
   L.push("");
   L.push("## 一、人物台词、动作与情绪总结");
   L.push("");
-  L.push("### （一）台词总览");
+  L.push("（一）台词总览（按出场顺序）");
+  L.push("");
   L.push("| 序号 | 人物 | 台词 | 字数 | 情绪状态 | 语速 | 台词时长 |");
   L.push("| --- | --- | --- | --- | --- | --- | --- |");
   (compress.台词总览||[]).forEach(t=>{
     L.push("| " + t.序号 + " | " + (t.人物||"") + " | " + String(t.台词||"").replace(/\|/g,"\\|") + " | " + t.字数 + " | " + (t.情绪||"") + " | " + t.语速 + " | " + fmtSec(t.台词时长) + " |");
   });
   L.push("");
-  L.push("### （二）动作总览");
+  L.push("（二）动作总览");
+  L.push("");
   L.push("| 序号 | 人物 | 动作 | 动作时长 |");
   L.push("| --- | --- | --- | --- |");
   (compress.动作总览||[]).forEach(t=>{
     L.push("| " + t.序号 + " | " + (t.人物||"") + " | " + String(t.动作||"").replace(/\|/g,"\\|") + " | " + fmtSec(t.动作时长) + " |");
   });
   L.push("");
-  L.push("### （三）情绪曲线");
+  L.push("（三）情绪曲线");
   L.push((compress.情绪曲线 || "—"));
   L.push("");
-  L.push("### （四）断点规划（N 个断点，均 ≤30 秒）");
+  L.push("（四）断点规划（" + plan.断点.length + " 个断点，均 ≤30 秒）");
+  L.push("");
   L.push("| 断点 | 内容 | 台词时长 | 动作时长 | 总时长 |");
   L.push("| --- | --- | --- | --- | --- |");
   plan.断点.forEach(bp=>{
     L.push("| " + bp.id + " | " + String(bp.内容摘要||"").replace(/\|/g,"\\|") + " | " + fmtSec(bp.台词时长) + " | " + fmtSec(bp.动作时长) + " | " + fmtSec(bp.总时长) + " |");
   });
   L.push("| 合计 | — | — | — | " + fmtSec(plan.合计) + " |");
-  if (plan.说明){ L.push(""); L.push("> 打包说明：" + plan.说明); }
+  if (plan.说明){ L.push(""); L.push("打包说明：" + plan.说明); }
   L.push("");
   L.push("## 二、" + ep.title + " 分镜头脚本");
   L.push("");
   plan.断点.forEach(bp=>{
     const list = shots[bp.id] || [];
-    L.push("### 【断点" + bp.id + "】" + (bp.内容摘要||"") + " — 生成片段" + bp.id);
+    L.push("【断点" + bp.id + "】" + (bp.内容摘要||"") + " — 生成片段" + bp.id);
+    if (bp.位置锚点) L.push("断点" + bp.id + " 位置锚点：" + bp.位置锚点);
+    if (bp.角色锚点) L.push("断点" + bp.id + " 角色锚点：" + bp.角色锚点);
     L.push("");
     list.forEach((s,i)=>{
       const no = s.镜头号 || (bp.id + "-" + (i+1));
       L.push("【镜头" + no + " · 断点" + bp.id + "】");
       L.push("转场：" + (s.转场 || "硬切"));
       L.push("景别/运镜：" + (s.景别||"") + (s.运镜 ? "，" + stripDur(s.运镜) : "") + (s.时长 != null ? "，" + fmtSec(s.时长) : ""));
-      L.push("机位：" + (s.机位 || "—"));
-      L.push("画面内容：" + (s.画面内容 || ""));
-      if (s.台词) L.push("台词：" + (s.情绪标签 ? s.情绪标签 + " " : "") + s.台词);
+      if (s.机位) L.push("机位：" + s.机位);
+      if (s.画面内容) L.push("画面内容：" + s.画面内容);
+      if (s.台词) L.push("台词：" + s.台词);
+      if (s.情绪标记) L.push("情绪标记：" + s.情绪标记);
       if (s.视觉建议) L.push("视觉建议：" + s.视觉建议);
       L.push("");
     });
@@ -1333,6 +1501,7 @@ function buildMD(){
     L.push("");
   });
   L.push("## 三、总时长统计");
+  L.push("");
   L.push("| 断点 | 内容 | 镜头 | 总时长 |");
   L.push("| --- | --- | --- | --- |");
   let ttlN = 0, ttlA = 0;
@@ -1345,6 +1514,7 @@ function buildMD(){
   L.push("| 合计 | — | " + ttlN + " 个镜头 / " + plan.断点.length + " 个片段 / " + fmtSec(ttlA) + " |");
   L.push("");
   L.push("## 四、台词时间分配对照表");
+  L.push("");
   L.push("| 镜头 | 说话人 | 台词 | 字数 | 语速 | 时长 |");
   L.push("| --- | --- | --- | --- | --- | --- |");
   plan.断点.forEach(bp=>{
@@ -1356,6 +1526,7 @@ function buildMD(){
   });
   L.push("");
   L.push("## 五、本集镜头角度应用说明");
+  L.push("");
   L.push("| 镜头 | 角度 | 理由 |");
   L.push("| --- | --- | --- |");
   plan.断点.forEach(bp=>{
@@ -1365,6 +1536,7 @@ function buildMD(){
   });
   L.push("");
   L.push("## 六、本集核心视觉设计建议");
+  L.push("");
   L.push("| 视觉元素 | 处理方式 |");
   L.push("| --- | --- |");
   const vis = [];
@@ -1400,6 +1572,7 @@ function init(){
   renderRules();
   $("effortSel").value = state.effort;
   bindEvents();
+  renderProjList();
   renderEpList();
   renderTokens();
   refreshPipeline();
