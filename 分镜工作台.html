@@ -1029,6 +1029,8 @@ const PROMPT_SHOT = (epTitle, bp, ctx) => `你是 AI 真人剧分镜流水线的
 }
 要求：
 - 本断点所有镜头时长之和 = 断点总时长（±0.5s）。
+- 【建立镜头铁律】本断点第一个镜头必须是建立镜头（establishing shot）：用全景/中景/中全景交代「位置锚点」里写的空间关系——谁站哪、谁跪哪、高低关系、画布方位，让观众一眼看清人物位置，禁止一上来就面部特写。
+- 【不遗漏铁律】输出前对照「位置锚点/角色锚点/本断点动作清单」自检：①位置锚点里提到的每个出场人物都必须至少有一个镜头覆盖；②动作清单里每个动作都必须有对应镜头呈现；③禁止只拍说话人特写而漏掉在场其他人物的反应/姿态（如某人跪在床榻上，必须有镜头或在画面中带到他跪姿，不能完全不出现）。
 - 「运镜」字段只写手法与速度（如 正常速度/1.2倍速），禁止出现任何秒数；镜头时长只写在「时长」字段，全片只标注一次。
 - 「画面内容」禁止描述人物的服饰、发型、身材体型（如短打、束发、矮壮）；只写动作、表情、肌肉生理细节、走位、终点态、灯光光变点。
 - 「台词」字段必须按 v6 格式写：人物名后带中文情绪提示词，如「楚景珩（关切打量）：五弟，伤得怎么样？（16字）」；情绪提示词与压缩阶段"情绪"列一致，禁止只写「人物：原文」。
@@ -1038,7 +1040,13 @@ const PROMPT_SHOT = (epTitle, bp, ctx) => `你是 AI 真人剧分镜流水线的
 - 台词必须与「本断点台词原文」一致，不得改写、不得删减关键句。
 - 只输出 JSON。
 
-【剧情压缩（集型/角色/情绪曲线/本断点台词原文）】
+【本断点位置锚点】
+${bp.位置锚点 || "（无）"}
+
+【本断点角色锚点】
+${bp.角色锚点 || "（无）"}
+
+【剧情压缩（集型/角色/情绪曲线/本断点台词原文/本断点动作清单）】
 ${JSON.stringify(ctx)}`;
 
 /* 分镜阶段上下文：只传必要信息，不重复传整集全文（省 token 的关键） */
@@ -1048,7 +1056,8 @@ function buildShotContext(compress, bp){
     集型理由: compress.集型理由 || "",
     角色: (compress.人物 || []).map(p=>p.名字),
     情绪曲线: compress.情绪曲线 || "",
-    本断点台词原文: (bp.包含台词 || [])
+    本断点台词原文: (bp.包含台词 || []),
+    本集动作总览: (compress.动作总览 || [])
   };
 }
 
@@ -1279,8 +1288,8 @@ function renderShots(){
     const over30 = act > 30.0;
     h += '<div class="shot-group">';
     h += '<div class="sg-head"><span class="bp-id">断点'+bp.id+'</span><span class="bp-title">'+esc(bp.内容摘要)+'</span><span class="bp-time" style="'+(over30?'color:#ff6b6b;font-weight:700':'')+'">'+fmtSec(act)+' / '+fmtSec(bp.总时长)+'s'+(over30?' ⚠超30s':'')+'</span><button class="btn sm ghost" data-regen="'+bp.id+'" style="margin-left:8px">重生成断点</button></div>';
-    h += '<table class="shots"><colgroup><col style="width:5%"><col style="width:6.5%"><col style="width:11%"><col style="width:15%"><col style="width:13%"><col style="width:5.5%"><col style="width:22%"><col style="width:17%"><col style="width:5%"></colgroup>';
-    h += '<thead><tr><th>镜号</th><th>转场</th><th>景别</th><th>机位·角度</th><th>运镜</th><th>时长</th><th>画面内容</th><th>台词</th><th>操作</th></tr></thead><tbody>';
+    h += '<table class="shots"><colgroup><col style="width:5%"><col style="width:6%"><col style="width:10%"><col style="width:12%"><col style="width:12%"><col style="width:5%"><col style="width:18%"><col style="width:15%"><col style="width:12%"><col style="width:5%"></colgroup>';
+    h += '<thead><tr><th>镜号</th><th>转场</th><th>景别</th><th>机位·角度</th><th>运镜</th><th>时长</th><th>画面内容</th><th>台词</th><th>视觉建议</th><th>操作</th></tr></thead><tbody>';
     list.forEach((s,i)=>{
       const tag = s.情绪标签 ? s.情绪标签 : "";
       h += '<tr>';
@@ -1292,6 +1301,7 @@ function renderShots(){
       h += '<td><input class="edit" data-f="时长" data-i="'+i+'" data-bp="'+bp.id+'" value="'+esc(s.时长)+'"></td>';
       h += '<td><textarea class="edit" rows="3" data-f="画面内容" data-i="'+i+'" data-bp="'+bp.id+'">'+esc(s.画面内容||"")+'</textarea></td>';
       h += '<td><div class="mono" style="margin-bottom:2px">'+esc(tag)+'</div><textarea class="edit" rows="3" data-f="台词" data-i="'+i+'" data-bp="'+bp.id+'">'+esc(s.台词||"")+'</textarea><div class="mono" style="margin-top:2px">'+esc(s.字数??"—")+'字 / '+esc(s.语速??"—")+'字/s / '+fmtSec(s.台词时长)+'s</div></td>';
+      h += '<td><textarea class="edit" rows="2" data-f="视觉建议" data-i="'+i+'" data-bp="'+bp.id+'">'+esc(s.视觉建议||"")+'</textarea></td>';
       h += '<td><button class="btn sm ghost" data-rg="'+i+'" data-bp="'+bp.id+'">重生成</button></td>';
       h += '</tr>';
     });
@@ -1488,11 +1498,9 @@ function buildMD(){
       L.push("【镜头" + no + " · 断点" + bp.id + "】");
       L.push("转场：" + (s.转场 || "硬切"));
       L.push("景别/运镜：" + (s.景别||"") + (s.运镜 ? "，" + stripDur(s.运镜) : "") + (s.时长 != null ? "，" + fmtSec(s.时长) : ""));
-      if (s.机位) L.push("机位：" + s.机位);
       if (s.画面内容) L.push("画面内容：" + s.画面内容);
       if (s.台词) L.push("台词：" + s.台词);
       if (s.情绪标记) L.push("情绪标记：" + s.情绪标记);
-      if (s.视觉建议) L.push("视觉建议：" + s.视觉建议);
       L.push("");
     });
     const act = list.reduce((a,s)=>a+(+s.时长||0),0);
