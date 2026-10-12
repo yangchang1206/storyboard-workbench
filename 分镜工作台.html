@@ -2,9 +2,23 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0C1016">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>分镜工作台 · AI真人剧导演</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='6' width='26' height='20' rx='3' fill='none' stroke='%23E6A23C' stroke-width='2.4'/%3E%3Ccircle cx='16' cy='16' r='4.6' fill='none' stroke='%23E6A23C' stroke-width='2'/%3E%3Cpath d='M16 6v6M16 20v6M6 16h6M20 16h6' stroke='%23E6A23C' stroke-width='1.6'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='36' fill='%230C1016'/%3E%3Crect x='30' y='48' width='120' height='84' rx='12' fill='none' stroke='%23E6A23C' stroke-width='8'/%3E%3Ccircle cx='90' cy='90' r='22' fill='none' stroke='%23E6A23C' stroke-width='7'/%3E%3C/svg%3E">
+<script>
+if (location.protocol !== "file:"){
+  const _m = document.createElement("link");
+  _m.rel = "manifest"; _m.href = "manifest.webmanifest";
+  document.head.appendChild(_m);
+  if ("serviceWorker" in navigator){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  }
+}
+</script>
 <style>
   :root{
     --bg:#0C1016; --panel:#141B25; --panel2:#1A2330; --panel3:#202B3A;
@@ -912,6 +926,35 @@ const SYS_HEAD = `你是资深 AI 真人剧分镜导演，擅长把短剧剧本�
 【体态细节底线】主角/反派/关键配角每个出镜镜头至少一个生理细节（踉跄半步/胸口起伏/手垂在身侧微微发抖/喉结滚动），禁止干站干说；群像镜头给 2-3 人分配不同细节，避免集体同姿势。
 
 【特殊视角点缀】每场 1-2 个，必须有叙事逻辑：窗外窥视/镜中倒影/门缝光/地面反射/剪影。
+
+【运镜库速查（按情绪选，中英双标）】
+- 希区柯克变焦 dolly zoom：情绪崩塌/认知颠覆/觉醒震撼，背景压缩面部放大
+- 斯坦尼康跟拍 steadicam follow：行走/连贯动作/进入重要场景
+- 环绕镜头 steadicam orbit：对峙/审视/情感凝视，绕主体旋转半圈
+- 慢推 slow dolly in：情绪高点/关键台词/内心觉醒
+- 后拉 slow pull back：格局打开/结尾展望/人物渺小化
+- 摇镜 slow pan up/left/right：交代环境关系，从物件摇至面部
+- 手持微晃 handheld micro-shake：真实感/生理震颤/紧张
+- 低角度仰拍 low angle shot：压迫/威严/神化
+- 主观视角 POV：沉浸/自我见证
+- 过肩 over-the-shoulder：对话/对抗
+- 定场镜头 establishing：场次开头交代空间（即本断点第一镜）
+- 升格慢动作 slow motion：悲壮/仪式感/关键瞬间
+竖屏9:16下环绕与横移幅度收敛，运镜优先垂直与纵深方向。
+
+【灯光情绪映射（可叠加，写进画面内容"稳定光/光变点"）】
+- 觉醒/力量：硬逆光+分割光+丁达尔体积光+眼神光，冷蓝青白调
+- 威严/救赎：伦勃朗光+侧逆光+眼神光，暖金主光与冷环境强反差
+- 格局打开：硬逆光+锐利轮廓光+蝴蝶光，冷蓝带暖金残余
+- 卑微/恐惧：门缝分割光面部半明半暗，冷蓝加重
+- 神迹/温暖：暖金光晕扩散，冷背景衬托暖金
+- 悲壮/牺牲：逆光剪影+升格，冷灰雪白
+主光写色温：冷硬日光7800K/模拟日光6500K/暖金治愈光。
+
+【特殊视角库（每场1-2个，必有叙事逻辑）】
+窗外窥视（窥视感/格局）/镜中倒影（双重自我）/地面反射（情绪延展）/门缝视角（卑微/入场）/逆光剪影（神化/牺牲）/前景遮挡（层次/压迫）/POV（沉浸）/高空俯拍（渺小/命运）。
+
+【9:16竖屏构图铁律】主体保持画面上1/3，特写居中；双人对话一人一侧，过肩对方面部在安全区；重要元素不要落底部字幕区。
 
 【模板E · v6 排版五规范（输出 MD 时必执行）】
 1. 多行式：每镜头字段独立成行（【镜头N·断点N】/转场/景别·运镜/机位/画面内容/台词/情绪标记/视觉建议），禁止把多字段挤成一行。
