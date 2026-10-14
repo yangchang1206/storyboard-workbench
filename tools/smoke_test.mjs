@@ -204,7 +204,37 @@ const PROBE = `(async () => {
   const mds = selEps().map(e => buildMD(e));
   ok("逐集都能单独导出 MD", mds.every(m => m && m.includes("分镜脚本")), mds.map(m => m ? m.length : 0).join(","));
   out.三集MD字节 = mds.map(m => m ? m.length : 0).join(" / ");
-  out.第38集导出标题行 = (buildMD(selEps()[2]) || "").split("\\n")[0];
+
+  // —— 剧名推断（回归：旧版把「第一行非分集标记的内容」当剧名，实测取到台词或场景描述）——
+  const titleFails = [];
+  const chk = (label, setup, want) => {
+    setup();
+    const got = dramaTitle();
+    if (got !== want) titleFails.push(label + " 得到「" + got + "」期望「" + want + "」");
+  };
+  chk("手填优先于一切", () => {
+    state.dramaTitle = "手填剧名"; state.scriptFile = "文件剧名.docx"; state.scriptText = "标题行\\n第1集";
+  }, "手填剧名");
+  chk("文件名优先于标题行", () => {
+    state.dramaTitle = ""; state.scriptFile = "福女入府定风华.docx"; state.scriptText = "退婚后我靠山神系统成首富\\n第1集";
+  }, "福女入府定风华");
+  chk("无文件名时取标题行", () => {
+    state.dramaTitle = ""; state.scriptFile = "";
+    state.scriptText = "退婚后，我靠山神系统成首富\\n第1集 退婚\\n1993年，北方小城。家属楼筒子楼走廊，灯泡昏黄。";
+  }, "退婚后，我靠山神系统成首富");
+  chk("不取台词行", () => {
+    state.dramaTitle = ""; state.scriptFile = "";
+    state.scriptText = "第1集 退婚\\n陈阳：我去找老赵说说，他欠我的工钱也该结了。";
+  }, "未命名剧集");
+  chk("不取场景描述行", () => {
+    state.dramaTitle = ""; state.scriptFile = "";
+    state.scriptText = "1993年，北方小城。家属楼筒子楼走廊，灯泡昏黄。\\n第1集 退婚";
+  }, "未命名剧集");
+  ok("剧名推断（5 种情形）", titleFails.length === 0, titleFails.join(" / "));
+
+  state.dramaTitle = "测试剧名"; state.scriptFile = "";
+  out.导出标题行 = (buildMD(selEps()[0]) || "").split("\\n")[0];
+  ok("导出标题真的用了剧名", out.导出标题行.includes("测试剧名"), out.导出标题行);
 
   out._failed = notes;
   return JSON.stringify(out);

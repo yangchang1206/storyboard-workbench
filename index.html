@@ -233,6 +233,10 @@ if (location.protocol !== "file:"){
           <button class="btn sm" id="btnLoadDemo">载入示例剧本</button>
           <button class="btn sm primary" id="btnParseEp" disabled>智能分集</button>
         </div>
+        <div class="upload-row" style="margin-top:6px">
+          <label class="hint" for="dramaTitleInput" style="flex:none">剧名</label>
+          <input id="dramaTitleInput" placeholder="用于导出标题与文件名；留空则自动推断" style="flex:1;min-width:0">
+        </div>
         <div class="hint" style="margin-top:6px">支持 txt / docx / pdf；docx、pdf 首次使用需联网加载解析库。</div>
         <div class="ep-list" id="epList"></div>
         <div class="selbar" id="selBar" style="display:none">
@@ -411,7 +415,7 @@ async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 /* ========== 状态 ========== */
 /* tok 按模型分账：{ 模型名: { in, out, hit } }，in/out 为缓存未命中口径，hit 为缓存命中输入。
    早期版本是全局 tokIn/tokOut 累计，切模型后会把历史 token 按新模型单价重算（费用虚高）。 */
-let state = { apiKey:"", model:DEFAULT_MODEL, effort:"off", expTech:false, scriptText:"", eps:[], epsSnap:"", sel:[], viewId:"", comp:{}, plans:{}, shots:{}, rules:{r1:1,r2:1,r3:1,r4:1,r5:1,r6:1,r7:1,r8:1,r9:1,r10:1,r11:1,r12:1,r13:1,r14:1,r15:1}, tok:{}, paused:false, abortCtrl:null, running:null, projects:[], curId:null };
+let state = { apiKey:"", model:DEFAULT_MODEL, effort:"off", expTech:false, scriptText:"", scriptFile:"", dramaTitle:"", eps:[], epsSnap:"", sel:[], viewId:"", comp:{}, plans:{}, shots:{}, rules:{r1:1,r2:1,r3:1,r4:1,r5:1,r6:1,r7:1,r8:1,r9:1,r10:1,r11:1,r12:1,r13:1,r14:1,r15:1}, tok:{}, paused:false, abortCtrl:null, running:null, projects:[], curId:null };
 function blankTok(){ return { in:0, out:0, hit:0 }; }
 function tokOf(model){ return state.tok[model] || (state.tok[model] = blankTok()); }
 try {
@@ -433,7 +437,7 @@ try {
   if (!projs.length && (saved.scriptText || (saved.eps && saved.eps.length))){
     const pid = "p" + Date.now();
     projs = [{ id:pid, name:guessProjName(saved.scriptText), createdAt:Date.now(), updatedAt:Date.now(),
-      scriptText:saved.scriptText||"", eps:saved.eps||[], epsSnap:saved.epsSnap||"", sel:saved.sel||[], comp:saved.comp||{}, plans:saved.plans||{}, shots:saved.shots||{} }];
+      scriptText:saved.scriptText||"", scriptFile:saved.scriptFile||"", dramaTitle:saved.dramaTitle||"", eps:saved.eps||[], epsSnap:saved.epsSnap||"", sel:saved.sel||[], comp:saved.comp||{}, plans:saved.plans||{}, shots:saved.shots||{} }];
     saved.curId = pid;
   }
   state.projects = projs;
@@ -443,7 +447,8 @@ try {
 (function unfoldCurrent(){
   const cp = state.projects.find(p=>p.id===state.curId);
   if (cp){
-    state.scriptText = cp.scriptText||""; state.eps = cp.eps||[]; state.epsSnap = cp.epsSnap||""; state.sel = cp.sel||[];
+    state.scriptText = cp.scriptText||""; state.scriptFile = cp.scriptFile||""; state.dramaTitle = cp.dramaTitle||"";
+    state.eps = cp.eps||[]; state.epsSnap = cp.epsSnap||""; state.sel = cp.sel||[];
     state.comp = cp.comp||{}; state.plans = cp.plans||{}; state.shots = cp.shots||{};
   }
 })();
@@ -457,7 +462,27 @@ function persist(){
 }
 
 /* ========== 项目历史（A 多项目存档 + B JSON 导入导出） ========== */
+/* 剧名推断（导出标题与文件名用）：
+   ① 用户手填的剧名优先；② 上传文件的文件名（最可靠，通常就是剧名）；
+   ③ 从剧本里找一行「像标题」的（排除分集标记 / 台词「人物：内容」/ 成句的场景描述）。 */
+function stripExt(name){ return String(name || "").replace(/\.(txt|text|docx|doc|pdf|md)$/i, "").trim(); }
+function guessTitleFromScript(text){
+  const lines = String(text || "").split("\n").map(s => s.trim()).filter(Boolean);
+  for (const ln of lines){
+    if (/^第\s*[0-9一二三四五六七八九十百千零两]+\s*[集回章]/.test(ln)) return "";  /* 开头就是分集标记 ⇒ 前面没有剧名行 */
+    if (ln.length > 24) continue;
+    if (/[：:]/.test(ln)) continue;                       /* 像「人物：台词」 */
+    if (/[。！？!?；;，,、]$/.test(ln)) continue;          /* 像成句的场景描述 */
+    return ln;
+  }
+  return "";
+}
+function autoDramaTitle(){
+  return String(state.dramaTitle || "").trim();
+}
 function guessProjName(text){
+  const t = autoDramaTitle() || stripExt(state.scriptFile) || guessTitleFromScript(text);
+  if (t) return t.slice(0, 20);
   const first = String(text||"").split("\n").map(x=>x.trim()).find(x=>x && !/^第\s*[0-9一二三四五六七八九十百千零两]+\s*[集回章]/.test(x));
   return (first || "未命名项目").slice(0, 20);
 }
@@ -466,6 +491,7 @@ function syncCurProject(){
   const p = curProject();
   if (!p) return;
   p.scriptText = state.scriptText; p.eps = state.eps; p.epsSnap = state.epsSnap; p.sel = state.sel;
+  p.scriptFile = state.scriptFile; p.dramaTitle = state.dramaTitle;
   p.comp = state.comp; p.plans = state.plans; p.shots = state.shots;
   if (!p.name || p.name === "未命名项目") p.name = guessProjName(state.scriptText);
   p.updatedAt = Date.now();
@@ -475,10 +501,11 @@ function newProject(){
   syncCurProject();
   const pid = "p" + Date.now();
   state.projects.push({ id:pid, name:"未命名项目", createdAt:Date.now(), updatedAt:Date.now(),
-    scriptText:"", eps:[], epsSnap:"", sel:[], comp:{}, plans:{}, shots:{} });
+    scriptText:"", scriptFile:"", dramaTitle:"", eps:[], epsSnap:"", sel:[], comp:{}, plans:{}, shots:{} });
   state.curId = pid;
-  state.scriptText=""; state.eps=[]; state.epsSnap=""; state.sel=[]; state.comp={}; state.plans={}; state.shots={};
+  state.scriptText=""; state.scriptFile=""; state.dramaTitle=""; state.eps=[]; state.epsSnap=""; state.sel=[]; state.viewId=""; state.comp={}; state.plans={}; state.shots={};
   $("scriptText").value = "";
+  $("dramaTitleInput").value = "";
   $("scriptLen").textContent = "0 字";
   $("epList").innerHTML = "";
   $("selBar").style.display = "none";
@@ -493,10 +520,12 @@ function openProject(pid){
   state.curId = pid;
   const p = curProject();
   if (p){
-    state.scriptText = p.scriptText||""; state.eps = p.eps||[]; state.epsSnap = p.epsSnap||""; state.sel = p.sel||[];
+    state.scriptText = p.scriptText||""; state.scriptFile = p.scriptFile||""; state.dramaTitle = p.dramaTitle||"";
+    state.eps = p.eps||[]; state.epsSnap = p.epsSnap||""; state.sel = p.sel||[]; state.viewId = "";
     state.comp = p.comp||{}; state.plans = p.plans||{}; state.shots = p.shots||{};
   }
   $("scriptText").value = state.scriptText;
+  $("dramaTitleInput").value = state.dramaTitle;
   $("scriptLen").textContent = countChars(state.scriptText) + " 字";
   persist(); renderEpList(); refreshPipeline(); renderProjList();
   toast("已切换项目：" + (p ? (p.name||"未命名") : ""), "ok");
@@ -550,11 +579,14 @@ function importProjectJSON(file){
       p.createdAt = p.createdAt || Date.now(); p.updatedAt = Date.now();
       p.scriptText = p.scriptText || ""; p.sel = p.sel || []; p.comp = p.comp || {}; p.plans = p.plans || {}; p.shots = p.shots || {};
       p.epsSnap = p.epsSnap || p.scriptText;
+      p.scriptFile = p.scriptFile || ""; p.dramaTitle = p.dramaTitle || "";
       state.projects.push(p);
       state.curId = p.id;
-      state.scriptText = p.scriptText; state.eps = p.eps; state.epsSnap = p.epsSnap; state.sel = p.sel;
+      state.scriptText = p.scriptText; state.scriptFile = p.scriptFile; state.dramaTitle = p.dramaTitle;
+      state.eps = p.eps; state.epsSnap = p.epsSnap; state.sel = p.sel; state.viewId = "";
       state.comp = p.comp; state.plans = p.plans; state.shots = p.shots;
       $("scriptText").value = state.scriptText;
+      $("dramaTitleInput").value = state.dramaTitle;
       $("scriptLen").textContent = countChars(state.scriptText) + " 字";
       persist(); renderEpList(); refreshPipeline(); renderProjList();
       toast("导入成功：" + p.name, "ok");
@@ -819,7 +851,10 @@ function setScriptText(t){
   state.scriptText = t;
   $("scriptText").value = t;
   $("scriptLen").textContent = countChars(t) + " 字";
-  state.eps = []; state.epsSnap = ""; state.sel = [];
+  state.eps = []; state.epsSnap = ""; state.sel = []; state.viewId = "";
+  /* 换了剧本 ⇒ 旧的文件名/剧名不再适用，清掉让调用方重新预填 */
+  state.scriptFile = ""; state.dramaTitle = "";
+  if ($("dramaTitleInput")) $("dramaTitleInput").value = "";
   $("epList").innerHTML = "";
   $("selBar").style.display = "none";
   $("btnParseEp").disabled = !String(t || "").trim();
@@ -945,6 +980,7 @@ function bindEvents(){
   $("apiKey").value = state.apiKey;
   $("modelSel").value = state.model;
   $("scriptText").value = state.scriptText;
+  $("dramaTitleInput").value = state.dramaTitle;
   $("scriptLen").textContent = countChars(state.scriptText) + " 字";
 
   $("apiKey").addEventListener("input", e=>{ state.apiKey = e.target.value.trim(); persist(); });
@@ -960,6 +996,10 @@ function bindEvents(){
     try {
       const t = await loadTextFile(f);
       setScriptText(t);
+      /* 文件名通常就是剧名，作为默认值预填；用户可随时改。清空或换标题过的话不覆盖。 */
+      state.scriptFile = f.name;
+      if (!state.dramaTitle){ state.dramaTitle = stripExt(f.name); $("dramaTitleInput").value = state.dramaTitle; }
+      persist();
       toast("已导入 " + f.name + "（" + countChars(t) + " 字）", "ok");
     } catch(err){
       toast(err.message, "err"); log("文件解析失败：" + err.message, "err");
@@ -968,7 +1008,15 @@ function bindEvents(){
   });
   $("btnLoadDemo").addEventListener("click", ()=>{
     setScriptText(DEMO_SCRIPT);
+    state.scriptFile = ""; state.dramaTitle = "示例剧集";
+    $("dramaTitleInput").value = state.dramaTitle;
+    persist();
     toast("已载入示例剧本（内置示例数据）", "ok");
+  });
+  $("dramaTitleInput").addEventListener("input", e=>{
+    state.dramaTitle = e.target.value.trim();
+    persist();
+    if ($("viewMd").classList.contains("on")) $("mdPreview").textContent = buildMD() || "完成流水线后，这里预览可导出的 MD 分镜脚本。";
   });
   $("scriptText").addEventListener("input", e=>{
     state.scriptText = e.target.value;
@@ -1696,9 +1744,11 @@ function renderSummary(){
 }
 
 /* ========== MD 导出（模板E六段） ========== */
+/* 剧名优先级：手填 > 上传文件名 > 剧本里「像标题」的一行 > 兜底。
+   旧版直接拿「第一行非分集标记的内容」，实测会取到第一句台词或场景描述（如「1993年，北方小城。」）。 */
 function dramaTitle(){
-  const first = (state.scriptText||"").split("\n").map(x=>x.trim()).find(x=>x && !/^第\s*[0-9一二三四五六七八九十百千零两]+\s*[集回章]/.test(x));
-  return (first || "未命名剧集").slice(0,30);
+  const t = autoDramaTitle() || stripExt(state.scriptFile) || guessTitleFromScript(state.scriptText) || "未命名剧集";
+  return t.slice(0, 40);
 }
 function buildMD(epArg){
   const ep = epArg || curEp(); if (!ep) return "";
