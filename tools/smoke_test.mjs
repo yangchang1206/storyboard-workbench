@@ -236,6 +236,172 @@ const PROBE = `(async () => {
   out.导出标题行 = (buildMD(selEps()[0]) || "").split("\\n")[0];
   ok("导出标题真的用了剧名", out.导出标题行.includes("测试剧名"), out.导出标题行);
 
+  // ============ v1.7 模板 A/B/C/D/E 导出 ============
+  // 五个模板共用同一份 comp/plans/shots，所以这里用同一份夹具渲染五遍做对比。
+  const shotTpl = (no, extra) => Object.assign({
+    镜头号:no, 转场:"硬切（切点理由：换说话人）", 景别:"近景→特写·面部（楚景珩）",
+    机位:"正面偏侧·突出表情·主角更有力量，低角度仰拍",
+    运镜:"缓慢推进（slow dolly in），正常速度", 时长:4.5,
+    画面内容:"裴灼昀扶住门框起身，指节按在伤口处，随后侧身让出半个身位",
+    台词:"楚景珩（关切打量）：五弟，你伤得怎么样？（11字）",
+    情绪标签:"[gentle whisper]", 情绪标记:"【压火·一字一顿】",
+    字数:11, 语速:3.5, 台词时长:3.1,
+    视觉建议:"侧逆光压暗背景，窗棂透光作轮廓光，整体偏暖"
+  }, extra || {});
+  state.projects = []; state.curId = null;
+  state.eps = [{id:"tp1",title:"第1集",text:"x"}]; state.sel = ["tp1"];
+  state.comp = { tp1:{ 台词总览:[], 动作总览:[], 集型:"对话对峙集", 场景:["裴府正堂"],
+    情绪曲线:"压抑→对峙→爆发" } };
+  state.plans = { tp1:{ 合计:9.0, 断点:[{ id:1, 内容摘要:"楚景珩挡门", 台词时长:3.1, 动作时长:5.9,
+    总时长:9.0, 位置锚点:"画左为门框与裴灼昀，画右为桌案与楚景珩", 角色锚点:"楚景珩：画右中景" }] } };
+  state.shots = { tp1:{ 1:[shotTpl("1-1"), shotTpl("1-2"), shotTpl("1-3", {台词:""})] } };
+  state.dramaTitle = "模板测试剧"; state.scriptFile = "";
+
+  const mE = buildMD(state.eps[0], "E"), mB = buildMD(state.eps[0], "B");
+  const mC = buildMD(state.eps[0], "C"), mD = buildMD(state.eps[0], "D");
+  const mA = buildMD(state.eps[0], "A");
+  ok("模板E 仍是六段", mE.includes("## 一、人物台词、动作与情绪总结")
+     && mE.includes("## 五、本集镜头角度应用说明") && mE.includes("（模板E"), mE.slice(0, 80));
+  ok("模板B 表头 6 列",
+     mB.includes("| 镜头号 | 景别 | 运镜 | 运镜时长 | 画面描述（含台词/OS/VO） | 切换逻辑 |"), mB.slice(0, 120));
+  ok("模板B 台词带【台词】前缀", mB.includes("【台词】楚景珩"));
+  const bRows = (mB.match(/\\n\\| 1-\\d+ \\|/g) || []).length;
+  ok("模板B 数据行数=镜头数", bRows === 3, String(bRows));
+  ok("模板C 表头含灯光三列", mC.includes("| 切换逻辑 | 场景光 | 体积光 | 调色 |"), mC.slice(0, 160));
+  const colsEmpty = lightCols({ 视觉建议:"" }, {});
+  ok("模板C 无线索时三列均为—（不编造）", colsEmpty.join(",") === "—,—,—", colsEmpty.join(","));
+  const colsHit = lightCols({ 视觉建议:"侧逆光压暗背景，窗棂透光作轮廓光，整体偏暖" }, {});
+  ok("模板C 关键词抽取生效", colsHit[0].includes("侧逆光") && colsHit[2].includes("偏暖"), colsHit.join(" | "));
+  ok("模板D 段落式无表格", mD.includes("【镜头1-1】") && !mD.includes("| --- |"));
+  ok("模板D 含景别/运镜行", mD.includes("景别/运镜：近景→特写·面部（楚景珩）"));
+  const aN = (mA.match(/即梦提示词 镜头1-\\d+：/g) || []).length;
+  ok("模板A 每镜头一段提示词", aN === 3, String(aN));
+  ok("模板A 含固定句式", mA.includes("电影级竖屏画面，9:16比例"));
+  ok("模板A 含灯光方案块 7 项",
+     ["类型：","核心情绪：","选用光型：","主光：","轮廓光：","氛围：","色彩倾向："].every(k => mA.includes("- " + k)));
+  ok("模板A 用上压缩阶段的场景字段", mA.includes("裴府正堂"), "未用场景字段");
+  ok("切模板不修改原始数据",
+     state.shots.tp1[1].length === 3 && state.shots.tp1[1][0].景别 === "近景→特写·面部（楚景珩）");
+  ok("模板选择器在界面上", !!document.getElementById("exportTpl")
+     && document.getElementById("exportTpl").options.length === 5,
+     String(document.getElementById("exportTpl") && document.getElementById("exportTpl").options.length));
+
+  // ============ v1.7 存储层 / 运行历史 / 完整备份 ============
+  // 背景：实测 localStorage 配额只有 5,241,856 字符，旧 persist() 溢出时会把整个 key
+  // 覆盖成 {apiKey,model}，等于把用户全部项目写没；且同一份业务数据被序列化了两次。
+
+  // (1) 载荷里不得再有顶层摊平的业务副本
+  state.eps = [{id:"ep1",title:"第1集",text:"a"}];
+  state.scriptText = "剧本正文"; state.sel = ["ep1"];
+  state.comp = { ep1:fullComp() }; state.plans = {}; state.shots = {};
+  state.projects = [{ id:"p1", name:"剧一", createdAt:1, updatedAt:2, scriptText:"剧本正文",
+    scriptFile:"", dramaTitle:"", eps:state.eps, epsSnap:"剧本正文", sel:["ep1"],
+    comp:state.comp, plans:{}, shots:{} }];
+  state.curId = "p1";
+  const pl = payload();
+  ok("载荷不再带顶层业务副本",
+     pl.scriptText === undefined && pl.eps === undefined && pl.comp === undefined
+     && pl.plans === undefined && pl.shots === undefined && pl.epsSnap === undefined,
+     Object.keys(pl).join(","));
+  ok("载荷保留设置与项目",
+     pl.apiKey !== undefined && pl.model !== undefined && pl.rules !== undefined
+     && pl.tok !== undefined && Array.isArray(pl.projects), Object.keys(pl).join(","));
+
+  // (2) 去重后体积必须小于旧写法（顶层 + projects 一起 stringify）
+  const newSize = JSON.stringify(payload()).length;
+  const oldSize = JSON.stringify(Object.assign({}, payload(), {
+    scriptText:state.scriptText, scriptFile:state.scriptFile, dramaTitle:state.dramaTitle,
+    eps:state.eps, epsSnap:state.epsSnap, sel:state.sel,
+    comp:state.comp, plans:state.plans, shots:state.shots })).length;
+  out.载荷体积_去重后_旧写法 = newSize + " / " + oldSize;
+  ok("去重后体积更小", newSize < oldSize, newSize + " vs " + oldSize);
+
+  // (3) 精简镜像不含项目：配额被业务数据吃干后，设置至少还写得进去
+  const slim = payloadSlim(payload());
+  ok("精简镜像不含项目",
+     slim.projects === undefined && slim.apiKey !== undefined && slim.rules !== undefined
+     && slim.tok !== undefined, Object.keys(slim).join(","));
+
+  // (4) 溢出保护：旧存档绝不能被为腾地方而覆盖
+  const LS = "storyboard_ws_v1";
+  const GUARD = "旧存档不该被覆盖";
+  localStorage.setItem(LS, GUARD);
+  const big = { v:2, apiKey:"k", model:"m", effort:"off", expTech:false, rules:{}, tok:{}, viewId:"",
+                projects:[{ id:"pX", blob:new Array(7 * 1024 * 1024).join("x") }] };
+  const mode = writeLS(big, false);          // false = 假装 IndexedDB 不可用，走 localStorage 完整存档
+  updateSaveWarn(mode);                      // saveNow() 里的真实调用顺序：writeLS → updateSaveWarn
+  const after = localStorage.getItem(LS);
+  out["溢出落盘前32字"] = String(after).slice(0, 32);
+  ok("溢出时返回 overflow", mode === "overflow", mode);
+  ok("溢出不覆盖旧存档", after === GUARD, "落盘=" + String(after).slice(0, 32));
+  ok("溢出时告警横幅出现", document.getElementById("saveWarn").style.display === "flex",
+     document.getElementById("saveWarn").style.display);
+  updateSaveWarn("full");
+  ok("正常写入时告警隐藏", document.getElementById("saveWarn").style.display !== "flex");
+  localStorage.removeItem(LS); localStorage.removeItem("storyboard_ws_v1_slim");
+
+  // (5) IndexedDB 主存确实可用（否则整条新路径都没生效）
+  ok("IndexedDB 主存可用", storageMode() === "IndexedDB", storageMode());
+
+  // (6) 运行历史：前面 callDeepSeek 已经调用过，应当已自动记账
+  const runs = await loadRuns();
+  out.历史条数 = runs.length;
+  ok("运行历史自动记账", runs.length >= 1, "条数 " + runs.length);
+  const r0 = runs[0] || {};
+  ok("历史含时间/模型/阶段/token/耗时",
+     typeof r0.ts === "number" && !!r0.model && !!r0.stage && !!r0.tok && typeof r0.ms === "number",
+     JSON.stringify({ts:typeof r0.ts, model:r0.model, stage:r0.stage, tok:r0.tok, ms:r0.ms}));
+  ok("历史有成功/失败字段", typeof r0.ok === "boolean", String(r0.ok));
+  ok("历史有费用字段", typeof r0.cost === "number", String(r0.cost));
+  ok("历史按时间倒序", runs.every((r,i)=> i === 0 || (runs[i-1].ts||0) >= (r.ts||0)));
+
+  // (7) 历史面板渲染 + 详情展开
+  let histCrash = "";
+  try { await renderHistory(); } catch(e){ histCrash = String(e); }
+  ok("历史面板渲染不崩", histCrash === "", histCrash);
+  ok("历史面板出现表头", !!document.querySelector("#histList .hist-row.head"));
+  ok("历史行数与记录一致",
+     document.querySelectorAll("#histList .hist-row[data-id]").length === runs.length,
+     document.querySelectorAll("#histList .hist-row[data-id]").length + " vs " + runs.length);
+  ok("历史汇总显示累计费用", /累计约/.test(document.getElementById("histStat").textContent),
+     document.getElementById("histStat").textContent.slice(0, 60));
+  const firstRow = document.querySelector("#histList .hist-row[data-id]");
+  if (firstRow) firstRow.click();
+  ok("点击行展开详情", !!document.querySelector("#histList .hist-detail"));
+
+  // (8) 完整备份载荷
+  let capName = "", capText = "";
+  const realDl = downloadText;
+  downloadText = (t, f) => { capText = t; capName = f; };
+  state.projects = [
+    { id:"p1", name:"剧一", createdAt:1, updatedAt:2, scriptText:"正文一", scriptFile:"", dramaTitle:"",
+      eps:[{id:"e1",title:"第1集",text:"a"}], epsSnap:"正文一", sel:[], comp:{}, plans:{}, shots:{} },
+    { id:"p2", name:"剧二", createdAt:3, updatedAt:4, scriptText:"正文二", scriptFile:"", dramaTitle:"",
+      eps:[], epsSnap:"", sel:[], comp:{}, plans:{}, shots:{} }
+  ];
+  state.curId = "p1"; state.apiKey = "sk-x"; state.dramaTitle = "";
+  exportAllBackup();
+  const bk = JSON.parse(capText || "{}");
+  ok("完整备份含全部项目", Array.isArray(bk.projects) && bk.projects.length === 2,
+     String(bk.projects && bk.projects.length));
+  ok("完整备份含设置", !!bk.settings && bk.settings.apiKey === "sk-x" && !!bk.settings.rules);
+  ok("完整备份文件名规范", /完整备份/.test(capName) && /\\.json$/.test(capName), capName);
+  downloadText = realDl;
+
+  // (9) 导入完整备份必须「合并」，不能覆盖现有项目
+  const beforeN = state.projects.length;
+  importProjectJSON(new File([capText], "backup.json", {type:"application/json"}));
+  for (let i = 0; i < 60 && state.projects.length === beforeN; i++) await new Promise(r=>setTimeout(r, 50));
+  ok("导入完整备份是合并不是覆盖", state.projects.length === beforeN + 2,
+     beforeN + " → " + state.projects.length);
+  ok("导入后项目名带（导入）标记", state.projects.some(p => /（导入）/.test(p.name || "")));
+
+  // (10) 清空历史后必须真的清干净
+  await idbClear("runs");
+  try { localStorage.removeItem("storyboard_ws_v1_runs"); } catch(e){}
+  const afterClear = await loadRuns();
+  ok("清空历史后无残留", afterClear.length === 0, "剩 " + afterClear.length);
+
   out._failed = notes;
   return JSON.stringify(out);
 })()`;
@@ -301,6 +467,12 @@ async function main() {
       if (!r || r.exceptionDetails) return undefined;
       return r.result?.value;
     };
+    /** 需要页内 Promise 结果时用这个（awaitPromise 才会把 Promise 解开） */
+    const evalAsync = async (expression) => {
+      const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+      if (!r || r.exceptionDetails) return undefined;
+      return r.result?.value;
+    };
 
     await send("Runtime.enable");
     await send("Log.enable");
@@ -317,6 +489,16 @@ async function main() {
     if (href.startsWith("chrome-error")) {
       throw new Error("页面没加载成功（chrome-error）—— 检查本地服务器是否在跑、以及是否被系统代理拦截");
     }
+    /* v1.7 起启动是异步的（先读 IndexedDB 再 hydrate 渲染），必须等 __booted 置位再断言 */
+    let booted = false;
+    for (let i = 0; i < 80; i++) {
+      if (await evalVal("window.__booted === true")) { booted = true; break; }
+      await sleep(250);
+    }
+    if (!booted) {
+      const diag = await evalVal("JSON.stringify({readyState:document.readyState, hasState:typeof state, idb:!!self.indexedDB, err:(document.getElementById('logBox')||{}).textContent})");
+      throw new Error("页面没有完成启动（window.__booted 未置位）—— 诊断：" + diag);
+    }
 
     const r = await send("Runtime.evaluate", { expression: PROBE, awaitPromise: true, returnByValue: true });
     if (r.exceptionDetails) throw new Error("页面内断言抛出异常：" + (r.exceptionDetails.exception?.description || r.exceptionDetails.text));
@@ -324,6 +506,38 @@ async function main() {
       throw new Error("断言脚本没有返回结果，原始响应：" + JSON.stringify(r).slice(0, 800));
     }
     const out = JSON.parse(r.result.value);
+
+    /* ===== 阶段二：持久化往返（写 → 刷新页面 → 读回）=====
+       v1.7 把存储层换成了「IndexedDB 主存 + localStorage 降级」，启动也改成异步的。
+       只断言页面内的函数不算数 —— 必须真的刷新一次，确认数据跨页面加载活下来了。 */
+    const RT = await (async () => {
+      const setup = "state.projects=[{id:'rt',name:'往返测试剧',createdAt:1,updatedAt:2,"
+        + "scriptText:'正文',scriptFile:'',dramaTitle:'往返标题',eps:[{id:'e1',title:'第1集',text:'a'}],"
+        + "epsSnap:'正文',sel:[],comp:{},plans:{},shots:{}}];state.curId='rt';"
+        + "state.scriptText='正文';state.dramaTitle='往返标题';";
+      await evalVal(setup);
+      const saved = await evalAsync("(async()=>{ const ok = await saveNow(); return JSON.stringify({ok:ok, mode:storageMode()}); })()");
+      await send("Page.navigate", { url: TARGET_URL }).catch(() => {});
+      let b2 = false;
+      for (let i = 0; i < 80; i++) {
+        if (await evalVal("window.__booted === true")) { b2 = true; break; }
+        await sleep(250);
+      }
+      const back = await evalVal("JSON.stringify({booted:!!window.__booted," +
+        "n:(state.projects||[]).length,name:(state.projects[0]||{}).name,title:state.dramaTitle," +
+        "sel:(state.projects[0]||{}).scriptText,mode:window.__storageMode})");
+      return { saved, b2, back };
+    })();
+    const backObj = (() => { try { return JSON.parse(RT.back || "{}"); } catch (e) { return {}; } })();
+    out["往返_写入"] = String(RT.saved);
+    out["往返_刷新后读到"] = String(RT.back);
+    const rtOk = RT.b2 && backObj.n === 1 && backObj.name === "往返测试剧"
+      && backObj.title === "往返标题" && backObj.sel === "正文";
+    const rtMode = (() => { try { return JSON.parse(RT.saved || "{}").mode; } catch (e) { return "?"; } })();
+    out["持久化往返（刷新后数据仍在）"] = rtOk;
+    out["主存用的是 IndexedDB"] = rtMode === "IndexedDB";
+    if (!rtOk) (out._failed = out._failed || []).push(
+      "持久化往返失败：写入=" + RT.saved + " 刷新后=" + RT.back);
 
     const failed = out._failed || [];
     const asserts = Object.entries(out).filter(([k, v]) => typeof v === "boolean" && k !== "_failed");

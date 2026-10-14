@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
-FILES = ["index.html", "manifest.webmanifest", "sw.js", "icon.svg"]
+FILES = ["index.html", "manifest.webmanifest", "sw.js", "icon.svg", "icon-192.png", "icon-512.png"]
 
 
 def main():

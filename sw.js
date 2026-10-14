@@ -4,8 +4,8 @@
 //  2) 缓存名带版本号，便于后续发布时自动清旧缓存
 //  3) 导航请求走 network-first（保证重新发布后能拿到新版），静态资源走 cache-first
 //  4) 跨域请求不做缓存（避免缓存 jsDelivr 的 opaque 响应）
-const CACHE = "storyboard-ws-v2";
-const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
+const CACHE = "storyboard-ws-v3";
+const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(
