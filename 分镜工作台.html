@@ -79,6 +79,8 @@ if (location.protocol !== "file:"){
   .ep-item.on{border-color:var(--accent-dim);background:#202414}
   .ep-item .ep-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ep-item .ep-len{font-size:11px;color:var(--dim);flex:none}
+  .ep-item .ep-state{font-size:10px;letter-spacing:1px;flex:none;color:var(--green);font-family:var(--mono)}
+  .ep-item .ep-state.none{color:var(--dim)}
   .ep-item input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
   .selbar{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
 
@@ -178,7 +180,7 @@ if (location.protocol !== "file:"){
     <svg width="30" height="30" viewBox="0 0 32 32"><rect x="3" y="6" width="26" height="20" rx="3" fill="none" stroke="#E6A23C" stroke-width="2.2"/><circle cx="16" cy="16" r="4.4" fill="none" stroke="#E6A23C" stroke-width="1.8"/><path d="M16 6v5.4M16 20.6V26M6 16h5.4M20.6 16H26" stroke="#E6A23C" stroke-width="1.5"/></svg>
     <div>
       <div class="t1">分镜工作台</div>
-      <div class="t2">AI真人剧导演 · 模板E流水线 · v5十五规则</div>
+      <div class="t2">AI真人剧导演 · 模板E流水线 · 规则v5 / 排版v6</div>
     </div>
   </div>
   <div class="settings">
@@ -272,13 +274,13 @@ if (location.protocol !== "file:"){
           <div class="pipe-body" id="body3"></div>
         </div>
         <div class="progress"><i id="progBar"></i></div>
-        <div class="tokenbar"><span>本集 tokens：</span><span id="tokIn">0</span><span>入 / </span><span id="tokOut">0</span><span>出</span><span> · 约 </span><span id="tokCost">0</span><span> 元（<span id="tokTz">高峰</span>价）</span></div>
+        <div class="tokenbar"><span>累计 tokens：</span><span id="tokIn">0</span><span>入（缓存命中 </span><span id="tokHit">0</span><span>）</span><span> / </span><span id="tokOut">0</span><span>出</span><span> · 约 </span><span id="tokCost">0</span><span> 元（<span id="tokTz">高峰</span>价）</span></div>
         <div class="log-box" id="logBox"></div>
       </div>
     </section>
 
     <section class="panel">
-      <div class="ph"><span class="ph-title">导演规则</span><span class="ph-meta">v5 十五规则 · 可开关</span></div>
+      <div class="ph"><span class="ph-title">导演规则</span><span class="ph-meta">规则 v5 · 十五规则 · 可开关</span></div>
       <div class="pb"><div class="rules" id="ruleBox"></div></div>
     </section>
   </div>
@@ -286,7 +288,7 @@ if (location.protocol !== "file:"){
   <!-- ===== 中栏：当前集结果概览 ===== -->
   <div class="col col-mid">
     <section class="panel">
-      <div class="ph"><span class="ph-title">当前集 · 压缩概览</span><span class="ph-meta" id="curEpName">未选</span></div>
+      <div class="ph"><span class="ph-title">当前集 · 压缩概览</span><span class="ph-meta"><span id="curEpName">未选</span><select id="epViewSel" title="切换要查看的集（批量生成后在这里逐集查看 / 导出）" style="display:none;max-width:170px;padding:2px 6px;font-size:11px"></select></span></div>
       <div class="pb" id="overview"></div>
     </section>
     <section class="panel">
@@ -300,7 +302,9 @@ if (location.protocol !== "file:"){
     <section class="panel">
       <div class="ph"><span class="ph-title">分镜脚本</span>
         <span class="ph-meta">
+          <label class="hint" title="勾选后，第二节「分镜头脚本」正文里会额外输出「机位」「视觉建议」行。v1.3 起默认不输出（避免与即梦提示词冗余），需要机位三问答案时请勾上。" style="display:inline-flex;align-items:center;gap:4px;margin-right:8px;cursor:pointer;user-select:none"><input type="checkbox" id="chkTech" style="width:auto;margin:0">含机位/视觉建议</label>
           <button class="btn sm" id="btnExportMD" disabled>导出 MD</button>
+          <button class="btn sm" id="btnExportAll" disabled style="display:none" title="把已出分镜的全部选中集合并导出成一个合集文件">导出全部</button>
           <button class="btn sm ghost" id="btnCopyMD" disabled>复制</button>
         </span>
       </div>
@@ -333,29 +337,44 @@ if (location.protocol !== "file:"){
 <script>
 "use strict";
 /* =========================================================
-   分镜工作台 · AI真人剧导演（模板E流水线 · v5十五规则）
+   分镜工作台 · AI真人剧导演（模板E流水线 · 规则v5 十五规则 / 排版v6 五规范）
    单文件本地应用：数据不出浏览器，直连 DeepSeek API
    ========================================================= */
 /* ========== 常量 ========== */
 const BASE_URL = "https://api.deepseek.com";
 const LS_KEY = "storyboard_ws_v1";
-/* 官方模型与价格（元/百万 tokens，2026-10 官网口径；高峰=周一至五9-12/14-18，其余空闲半价） */
+/* 官方模型与价格（元/百万 tokens，2026-10-14 核对 api-docs.deepseek.com 现价）
+   · 模型名以 `deepseek-flash` 为准。旧名 `deepseek-v4-flash` 仍可调用（同模型同价），故旧存档无需改名。
+   · 高峰 = 北京时间周一至周五（不含中国法定节假日）9:00-12:00、14:00-18:00；
+     其余时段（含周末与中国法定节假日全天）为空闲，空闲价 = 高峰价的一半。
+   · inHit* = 输入缓存命中价（重复发送的系统提示词大概率命中，命中价仅为未命中的 1/50~1/20）。 */
 const MODELS = {
-  "deepseek-flash": { label: "deepseek-flash（快·省）", inPeak:2, inOff:1, outPeak:8, outOff:4 },
-  "deepseek-v4-pro": { label: "deepseek-v4-pro（强·贵）", inPeak:9, inOff:4.5, outPeak:27, outOff:13.5 }
+  "deepseek-flash":   { label:"deepseek-flash（快·省）",   inHitPeak:0.04, inHitOff:0.02, inPeak:2, inOff:1,   outPeak:8,  outOff:4    },
+  "deepseek-v4-pro":  { label:"deepseek-v4-pro（强·贵）",  inHitPeak:0.30, inHitOff:0.15, inPeak:9, inOff:4.5, outPeak:27, outOff:13.5 }
 };
+const DEFAULT_MODEL = "deepseek-flash";
 const EFFORTS = { off:"off", low:"low", medium:"medium", high:"high" };
-function isPeak(){
-  const d = new Date();
-  const day = d.getDay();
+/* 高峰判定：固定按北京时间（UTC+8）计算，不随本机时区漂移。
+   Date.now() 是绝对时刻，直接 +8h 后读 UTC 字段即为北京墙上时间；
+   （不要再叠加 getTimezoneOffset()，那会把时区补偿算两次。）
+   刻意不排除中国法定节假日：节假日会被按高峰价估算，属偏保守（偏高）的误差。
+   ts 可传入指定时刻，便于测试。 */
+function isPeak(ts){
+  const bj = new Date((ts == null ? Date.now() : ts) + 480 * 60000);
+  const day = bj.getUTCDay();
   if (day === 0 || day === 6) return false;
-  const t = d.getHours() + d.getMinutes()/60;
+  const t = bj.getUTCHours() + bj.getUTCMinutes() / 60;
   return (t >= 9 && t < 12) || (t >= 14 && t < 18);
 }
 
 /* ========== 工具 ========== */
 const $ = id => document.getElementById(id);
-function esc(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+/* 转义：文本节点用途外，还被拼进 value="..." 属性，所以引号必须一并转义 */
+function esc(s){
+  return String(s ?? "")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
 function toast(msg, type){
   const t = $("toast");
   t.textContent = msg; t.className = "toast" + (type==="err"?" err":type==="ok"?" ok":"");
@@ -390,21 +409,31 @@ function safeParse(text){
 async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 /* ========== 状态 ========== */
-let state = { apiKey:"", model:"deepseek-flash", effort:"off", scriptText:"", eps:[], sel:[], comp:{}, plans:{}, shots:{}, rules:{r1:1,r2:1,r3:1,r4:1,r5:1,r6:1,r7:1,r8:1,r9:1,r10:1,r11:1,r12:1,r13:1,r14:1,r15:1}, tokIn:0, tokOut:0, paused:false, abortCtrl:null, running:null, projects:[], curId:null };
+/* tok 按模型分账：{ 模型名: { in, out, hit } }，in/out 为缓存未命中口径，hit 为缓存命中输入。
+   早期版本是全局 tokIn/tokOut 累计，切模型后会把历史 token 按新模型单价重算（费用虚高）。 */
+let state = { apiKey:"", model:DEFAULT_MODEL, effort:"off", expTech:false, scriptText:"", eps:[], epsSnap:"", sel:[], viewId:"", comp:{}, plans:{}, shots:{}, rules:{r1:1,r2:1,r3:1,r4:1,r5:1,r6:1,r7:1,r8:1,r9:1,r10:1,r11:1,r12:1,r13:1,r14:1,r15:1}, tok:{}, paused:false, abortCtrl:null, running:null, projects:[], curId:null };
+function blankTok(){ return { in:0, out:0, hit:0 }; }
+function tokOf(model){ return state.tok[model] || (state.tok[model] = blankTok()); }
 try {
   const saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
   if (saved.apiKey) state.apiKey = saved.apiKey;
-  if (saved.model) state.model = saved.model === "deepseek-v4-flash" ? "deepseek-flash" : saved.model;
+  /* 旧名 deepseek-v4-flash 已下线（仍可调用、同价），统一归到 deepseek-flash，便于费用合并统计 */
+  if (saved.model) state.model = saved.model === "deepseek-v4-flash" ? DEFAULT_MODEL : saved.model;
+  if (!MODELS[state.model]) state.model = DEFAULT_MODEL;
   if (saved.effort) state.effort = saved.effort;
+  if (saved.expTech) state.expTech = true;
   if (saved.rules) Object.assign(state.rules, saved.rules);
-  if (saved.tokIn) state.tokIn = saved.tokIn;
-  if (saved.tokOut) state.tokOut = saved.tokOut;
+  if (saved.tok && typeof saved.tok === "object") state.tok = saved.tok;
+  /* 旧存档的全局 tokIn/tokOut → 折算到首次出现的模型名下 */
+  if (saved.tokIn || saved.tokOut){
+    const t = tokOf(state.model); t.in = saved.tokIn || 0; t.out = saved.tokOut || 0;
+  }
   /* 项目迁移：旧版数据（顶层业务字段）→ projects 数组 */
   let projs = Array.isArray(saved.projects) ? saved.projects : [];
   if (!projs.length && (saved.scriptText || (saved.eps && saved.eps.length))){
     const pid = "p" + Date.now();
     projs = [{ id:pid, name:guessProjName(saved.scriptText), createdAt:Date.now(), updatedAt:Date.now(),
-      scriptText:saved.scriptText||"", eps:saved.eps||[], sel:saved.sel||[], comp:saved.comp||{}, plans:saved.plans||{}, shots:saved.shots||{} }];
+      scriptText:saved.scriptText||"", eps:saved.eps||[], epsSnap:saved.epsSnap||"", sel:saved.sel||[], comp:saved.comp||{}, plans:saved.plans||{}, shots:saved.shots||{} }];
     saved.curId = pid;
   }
   state.projects = projs;
@@ -414,7 +443,7 @@ try {
 (function unfoldCurrent(){
   const cp = state.projects.find(p=>p.id===state.curId);
   if (cp){
-    state.scriptText = cp.scriptText||""; state.eps = cp.eps||[]; state.sel = cp.sel||[];
+    state.scriptText = cp.scriptText||""; state.eps = cp.eps||[]; state.epsSnap = cp.epsSnap||""; state.sel = cp.sel||[];
     state.comp = cp.comp||{}; state.plans = cp.plans||{}; state.shots = cp.shots||{};
   }
 })();
@@ -436,7 +465,7 @@ function curProject(){ return state.projects.find(p=>p.id===state.curId) || null
 function syncCurProject(){
   const p = curProject();
   if (!p) return;
-  p.scriptText = state.scriptText; p.eps = state.eps; p.sel = state.sel;
+  p.scriptText = state.scriptText; p.eps = state.eps; p.epsSnap = state.epsSnap; p.sel = state.sel;
   p.comp = state.comp; p.plans = state.plans; p.shots = state.shots;
   if (!p.name || p.name === "未命名项目") p.name = guessProjName(state.scriptText);
   p.updatedAt = Date.now();
@@ -446,9 +475,9 @@ function newProject(){
   syncCurProject();
   const pid = "p" + Date.now();
   state.projects.push({ id:pid, name:"未命名项目", createdAt:Date.now(), updatedAt:Date.now(),
-    scriptText:"", eps:[], sel:[], comp:{}, plans:{}, shots:{} });
+    scriptText:"", eps:[], epsSnap:"", sel:[], comp:{}, plans:{}, shots:{} });
   state.curId = pid;
-  state.scriptText=""; state.eps=[]; state.sel=[]; state.comp={}; state.plans={}; state.shots={};
+  state.scriptText=""; state.eps=[]; state.epsSnap=""; state.sel=[]; state.comp={}; state.plans={}; state.shots={};
   $("scriptText").value = "";
   $("scriptLen").textContent = "0 字";
   $("epList").innerHTML = "";
@@ -464,7 +493,7 @@ function openProject(pid){
   state.curId = pid;
   const p = curProject();
   if (p){
-    state.scriptText = p.scriptText||""; state.eps = p.eps||[]; state.sel = p.sel||[];
+    state.scriptText = p.scriptText||""; state.eps = p.eps||[]; state.epsSnap = p.epsSnap||""; state.sel = p.sel||[];
     state.comp = p.comp||{}; state.plans = p.plans||{}; state.shots = p.shots||{};
   }
   $("scriptText").value = state.scriptText;
@@ -520,9 +549,10 @@ function importProjectJSON(file){
       p.name = (p.name || file.name.replace(/\.json$/,"")) + "（导入）";
       p.createdAt = p.createdAt || Date.now(); p.updatedAt = Date.now();
       p.scriptText = p.scriptText || ""; p.sel = p.sel || []; p.comp = p.comp || {}; p.plans = p.plans || {}; p.shots = p.shots || {};
+      p.epsSnap = p.epsSnap || p.scriptText;
       state.projects.push(p);
       state.curId = p.id;
-      state.scriptText = p.scriptText; state.eps = p.eps; state.sel = p.sel;
+      state.scriptText = p.scriptText; state.eps = p.eps; state.epsSnap = p.epsSnap; state.sel = p.sel;
       state.comp = p.comp; state.plans = p.plans; state.shots = p.shots;
       $("scriptText").value = state.scriptText;
       $("scriptLen").textContent = countChars(state.scriptText) + " 字";
@@ -546,47 +576,82 @@ function effortParams(){
   const map = { low:"low", medium:"high", high:"max" };
   return { thinking:{ type:"enabled" }, reasoning_effort: map[e] };
 }
+const REQ_TIMEOUT_MS = 240000; /* 单次请求超时（思考·高 模式可能跑很久，给 4 分钟） */
+/* 带超时的 fetch：把「网络超时」与「用户手动暂停」区分开，避免超时被当成取消静默吞掉 */
+function fetchWithTimeout(url, init, ms, outerSignal){
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const onAbort = () => ctrl.abort();
+  if (outerSignal){
+    if (outerSignal.aborted) ctrl.abort();
+    else outerSignal.addEventListener("abort", onAbort, { once:true });
+  }
+  const timer = setTimeout(()=>{ timedOut = true; ctrl.abort(); }, ms || REQ_TIMEOUT_MS);
+  return fetch(url, Object.assign({}, init, { signal: ctrl.signal })).catch(e=>{
+    if (timedOut) throw new Error("TIMEOUT");
+    if (outerSignal && outerSignal.aborted) throw new Error("PAUSED");
+    if (e && e.name === "AbortError") throw new Error("PAUSED");
+    throw e;
+  }).finally(()=>{
+    clearTimeout(timer);
+    if (outerSignal) outerSignal.removeEventListener("abort", onAbort);
+  });
+}
 async function callDeepSeek(messages, opts){
   opts = opts || {};
   const key = getKey();
   if (!key) throw new Error("NO_KEY");
   const model = opts.model || curModel();
   if (!state.abortCtrl) state.abortCtrl = new AbortController();
-  const body = Object.assign({
-    model, messages, stream:false,
-    temperature: (opts.temperature != null) ? opts.temperature : 0.7
-  }, effortParams());
+  const eff = effortParams();
+  const body = Object.assign({ model, messages, stream:false }, eff);
+  /* 思考模式下 temperature 不被支持（官方口径：不报错但不生效），
+     所以只在「思考关闭」时才传，避免表面上在调参、实际无效。 */
+  if (!eff.thinking || eff.thinking.type === "disabled"){
+    body.temperature = (opts.temperature != null) ? opts.temperature : 0.7;
+  }
   if (opts.json) body.response_format = { type:"json_object" };
   if (opts.maxTokens) body.max_tokens = opts.maxTokens;
+  const maxTry = (opts.retry == null) ? 1 : opts.retry;
+  const timeoutMs = opts.timeoutMs || REQ_TIMEOUT_MS;
   let lastErr = null;
-  for (let attempt = 0; attempt <= (opts.retry || 1); attempt++){
+  for (let attempt = 0; attempt <= maxTry; attempt++){
     try {
-      const resp = await fetch(BASE_URL + "/chat/completions", {
+      const resp = await fetchWithTimeout(BASE_URL + "/chat/completions", {
         method:"POST",
         headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + key },
-        body: JSON.stringify(body),
-        signal: state.abortCtrl.signal
-      });
+        body: JSON.stringify(body)
+      }, timeoutMs, state.abortCtrl.signal);
       if (resp.status === 401) throw new Error("API Key 无效或已过期");
       if (resp.status === 402) throw new Error("账户余额不足，请到 platform.deepseek.com 充值");
-      if (resp.status === 429) { lastErr = new Error("请求过于频繁（限流），稍后重试"); await sleep(2500*(attempt+1)); continue; }
+      if (resp.status === 429){ lastErr = new Error("请求过于频繁（限流），稍后重试"); await sleep(2500*(attempt+1)); continue; }
       if (!resp.ok){
         const t = await resp.text().catch(()=>"");
-        throw new Error("接口错误 " + resp.status + (t? "：" + t.slice(0,180) : ""));
+        throw new Error("接口错误 " + resp.status + (t ? "：" + t.slice(0,180) : ""));
       }
       const data = await resp.json();
       const u = data.usage || {};
-      state.tokIn += u.prompt_tokens || 0;
-      state.tokOut += u.completion_tokens || 0;
+      /* 分三段记账：缓存命中输入 / 缓存未命中输入 / 输出（单价三者不同） */
+      const hit = u.prompt_cache_hit_tokens || 0;
+      const tk = tokOf(model);
+      tk.hit += hit;
+      tk.in  += (u.prompt_cache_miss_tokens != null) ? u.prompt_cache_miss_tokens : Math.max(0, (u.prompt_tokens || 0) - hit);
+      tk.out += u.completion_tokens || 0;
       renderTokens();
       const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : "";
       if (!content) throw new Error("模型返回为空");
       return content;
     } catch(e){
-      if (e && (e.name === "AbortError" || e.message === "The user aborted a request.")) throw new Error("PAUSED");
+      const msg = (e && e.message) || "";
+      if (msg === "PAUSED") throw e;
       lastErr = e;
-      if (e.message === "NO_KEY") throw e;
-      if (e.message.indexOf("接口错误 5") === 0 && attempt < (opts.retry || 1)){ await sleep(2000*(attempt+1)); continue; }
+      if (msg === "NO_KEY") throw e;
+      if (msg === "TIMEOUT" && attempt < maxTry){
+        log("   ⏱ 请求超过 " + Math.round(timeoutMs/1000) + "s 无响应，重试…", "err");
+        await sleep(1500); continue;
+      }
+      if (msg.indexOf("接口错误 5") === 0 && attempt < maxTry){ await sleep(2000*(attempt+1)); continue; }
+      if (msg === "TIMEOUT") throw new Error("请求超过 " + Math.round(timeoutMs/1000) + "s 无响应（网络或服务端卡住），已中止并可重试");
       throw e;
     }
   }
@@ -631,16 +696,29 @@ function readTxt(file){
     r.readAsArrayBuffer(file);
   });
 }
-function loadScript(src){
-  return new Promise((resolve, reject)=>{
+/* 解析库加载：按「同源 → jsDelivr → unpkg」顺序兜底。
+   同源路径 ./vendor/npm/ 下放一份即可离线/内网可用（不放也行，会自动跳过尝试下一镜像）。 */
+const CDN_BASES = ["./vendor/npm/", "https://cdn.jsdelivr.net/npm/", "https://unpkg.com/"];
+const _libBase = {};
+function loadScript(path, globalName){
+  if (globalName && window[globalName]) return Promise.resolve(_libBase[path] || CDN_BASES[1]);
+  const bases = CDN_BASES.slice();
+  const tryNext = () => new Promise((resolve, reject)=>{
+    if (!bases.length) return reject(new Error("解析库加载失败（同源与 CDN 均不可用），请改用 txt，或直接把文本粘贴进来"));
+    const base = bases.shift();
     const s = document.createElement("script");
-    s.src = src; s.onload = resolve; s.onerror = () => reject(new Error("解析库加载失败，请检查网络或改用 txt / 粘贴"));
+    s.src = base + path; s.async = true;
+    s.onload = () => {
+      if (!globalName || window[globalName]){ _libBase[path] = base; resolve(base); }
+      else { s.remove(); tryNext().then(resolve, reject); }   /* 某些托管会把 404 兜成 200 的 HTML，这里再判一次全局变量 */
+    };
+    s.onerror = () => { s.remove(); tryNext().then(resolve, reject); };
     document.head.appendChild(s);
   });
+  return tryNext();
 }
 async function readDocx(file){
-  try { await loadScript("https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"); }
-  catch(e){ throw e; }
+  await loadScript("mammoth@1.8.0/mammoth.browser.min.js", "mammoth");
   if (!window.mammoth) throw new Error("docx 解析库不可用");
   const arr = await file.arrayBuffer();
   const res = await window.mammoth.extractRawText({ arrayBuffer: arr });
@@ -648,9 +726,15 @@ async function readDocx(file){
   return res.value;
 }
 async function readPdf(file){
-  try { await loadScript("https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"); }
-  catch(e){ throw e; }
+  const base = await loadScript("pdfjs-dist@3.11.174/build/pdf.min.js", "pdfjsLib");
   if (!window.pdfjsLib) throw new Error("pdf 解析库不可用");
+  /* pdf.js 3.x 必须显式指定 worker：不指定时在 CDN/跨域场景会回退成「假 worker」，
+     大文件会在主线程上解析甚至假死。 */
+  try {
+    if (window.pdfjsLib.GlobalWorkerOptions && !window.pdfjsLib.GlobalWorkerOptions.workerSrc){
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = base + "pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    }
+  } catch(e){}
   const url = URL.createObjectURL(file);
   try {
     const pdf = await window.pdfjsLib.getDocument({ url }).promise;
@@ -684,6 +768,9 @@ function parseEpisodes(text){
   }
   return eps;
 }
+/* 分集是基于「分集当时的剧本快照」切出来的；改了剧本但没重新分集时给出显式提醒，
+   而不是像旧版那样每次敲键盘都静默清空分集与勾选。 */
+function isEpsStale(){ return !!(state.eps.length && state.epsSnap && state.epsSnap !== state.scriptText); }
 function renderEpList(){
   const box = $("epList"); box.innerHTML = "";
   if (!state.eps.length){
@@ -691,17 +778,37 @@ function renderEpList(){
     box.innerHTML = '<div class="hint" style="padding:4px">导入剧本后点击「智能分集」。</div>';
     return;
   }
+  if (isEpsStale()){
+    const w = document.createElement("div");
+    w.className = "hint";
+    w.style.cssText = "padding:6px 8px;margin-bottom:6px;border:1px solid var(--accent);border-radius:6px;color:var(--accent)";
+    w.textContent = "⚠ 剧本已改动，下面仍是改动前的分集快照，建议重新点「智能分集」。";
+    box.appendChild(w);
+  }
   $("selBar").style.display = "flex";
   state.eps.forEach((ep, i)=>{
     const on = state.sel.includes(ep.id);
+    /* 每集的完成度标记：压=已剧情压缩 规=已断点规划 镜=已出分镜 */
+    const marks = (hasCompOf(ep)?"压":"") + (hasPlanOf(ep)?"规":"") + (hasShotsOf(ep)?"镜":"");
     const d = document.createElement("label");
     d.className = "ep-item" + (on ? " on":"");
-    d.innerHTML = '<input type="checkbox" data-id="'+ep.id+'" '+(on?"checked":"")+'><span class="ep-title">'+esc(ep.title)+'</span><span class="ep-len">'+countChars(ep.text)+' 字</span>';
+    d.innerHTML = '<input type="checkbox" data-id="'+ep.id+'" '+(on?"checked":"")+'><span class="ep-title">'+esc(ep.title)+'</span>'
+      + '<span class="ep-state'+(marks?"":" none")+'" title="已完成阶段：压=压缩 规=规划 镜=分镜">'+(marks||"—")+'</span>'
+      + '<span class="ep-len">'+countChars(ep.text)+' 字</span>';
     d.querySelector("input").addEventListener("change", e=>{
       const id = e.target.dataset.id;
       if (e.target.checked){ if(!state.sel.includes(id)) state.sel.push(id); }
-      else state.sel = state.sel.filter(x=>x!==id);
+      else {
+        state.sel = state.sel.filter(x=>x!==id);
+        if (state.viewId === id) state.viewId = "";   /* 取消勾选的集不再作为查看目标 */
+      }
       persist(); renderEpList(); refreshPipeline();
+    });
+    /* 点标题即切换「当前查看集」，省得为了看一眼 37 集还要改勾选 */
+    d.querySelector(".ep-title").addEventListener("click", e=>{
+      e.preventDefault(); e.stopPropagation();
+      if (!state.sel.includes(ep.id)){ state.sel.push(ep.id); persist(); renderEpList(); }
+      state.viewId = ep.id; refreshPipeline();
     });
     box.appendChild(d);
   });
@@ -712,7 +819,7 @@ function setScriptText(t){
   state.scriptText = t;
   $("scriptText").value = t;
   $("scriptLen").textContent = countChars(t) + " 字";
-  state.eps = []; state.sel = [];
+  state.eps = []; state.epsSnap = ""; state.sel = [];
   $("epList").innerHTML = "";
   $("selBar").style.display = "none";
   $("btnParseEp").disabled = !String(t || "").trim();
@@ -739,44 +846,89 @@ const DEMO_SCRIPT = `第1集 退婚
 赵建国：你敢动我车试试。`;
 
 /* ========== 流水线可用性 ========== */
+/* 当前查看集 = state.viewId 指定的那一集（必须是已勾选的集），否则回落到选中集的第一集。
+   中/右栏的「压缩概览、断点规划、镜头表、MD 预览/导出」全部跟随它。
+   注意：这**只影响显示**——流水线的「生成」按钮按全部选中集批量执行（见 selEps）。 */
 function curEp(){
   if (!state.sel.length) return null;
-  return state.eps.find(e => e.id === state.sel[0]) || null;
+  const id = state.sel.includes(state.viewId) ? state.viewId : state.sel[0];
+  return state.eps.find(e => e.id === id) || null;
 }
+function selEps(){
+  return state.sel.map(id => state.eps.find(e => e.id === id)).filter(Boolean);
+}
+function hasCompOf(ep){ return !!(ep && state.comp  && state.comp[ep.id]); }
+function hasPlanOf(ep){ return !!(ep && state.plans && state.plans[ep.id]); }
+function hasShotsOf(ep){ return !!(ep && state.shots && state.shots[ep.id] && Object.keys(state.shots[ep.id]).length); }
 function refreshPipeline(){
-  const hasSel = state.sel.length > 0;
-  const hasComp = !!(state.comp && state.comp[curEp()?.id]);
-  const hasPlan = !!(state.plans && state.plans[curEp()?.id]);
-  const hasShots = !!(curEp() && state.shots[curEp().id] && Object.keys(state.shots[curEp().id]).length);
+  const eps = selEps(), n = eps.length;
+  const hasSel = n > 0;
+  const nComp = eps.filter(hasCompOf).length;
+  const nPlan = eps.filter(hasPlanOf).length;
+  const hasComp = hasSel && nComp === n;
+  const hasPlan = hasSel && nPlan === n;
+  const hasShots = hasSel && eps.some(hasShotsOf);
   $("btnRun1").disabled = !hasSel;
   $("btnRun2").disabled = !(hasSel && hasComp);
   $("btnRun3").disabled = !(hasSel && hasComp && hasPlan);
   $("btnExportMD").disabled = !hasShots;
   $("btnCopyMD").disabled = !hasShots;
+  /* 「导出全部」只在多集且已有 ≥2 集出分镜时才出现 */
+  const expAll = $("btnExportAll");
+  if (expAll){
+    const nShot = eps.filter(hasShotsOf).length;
+    expAll.style.display = nShot > 1 ? "" : "none";
+    expAll.disabled = nShot < 2;
+    expAll.textContent = "导出全部（" + nShot + " 集）";
+  }
   const step1 = $("step1"), step2 = $("step2"), step3 = $("step3");
   step1.classList.toggle("done", hasComp); step2.classList.toggle("done", hasPlan);
   step1.classList.toggle("open", hasSel && !hasComp);
   step2.classList.toggle("open", hasComp && !hasPlan);
   step3.classList.toggle("open", hasPlan);
-  if (hasComp) $("pipeState").textContent = "剧情压缩 ✓";
-  if (hasPlan) $("pipeState").textContent = "断点规划 ✓";
-  if (hasSel && !hasComp && !hasPlan) $("pipeState").textContent = "待生成";
   if (!hasSel) $("pipeState").textContent = "未开始";
+  else if (hasPlan) $("pipeState").textContent = "断点规划 ✓";
+  else if (hasComp) $("pipeState").textContent = "剧情压缩 ✓";
+  else $("pipeState").textContent = "待生成";
+  /* 多集时把「已完成集数」摊在状态里，避免看起来毫无进展 */
+  if (n > 1) $("pipeState").textContent += " · " + nComp + "/" + n + " 集压缩、" + nPlan + "/" + n + " 集规划";
+  renderViews();
+}
+/* 只重绘展示区（中/右栏），不碰按钮门控 —— 供批量生成过程中「跟着正在处理的集走」使用 */
+function renderViews(){
   renderCurEpName();
   renderOverview(); renderBpList(); renderShots();
 }
 function renderCurEpName(){
   const ep = curEp();
-  $("curEpName").textContent = ep ? ep.title : "未选";
+  const eps = selEps();
+  const nameEl = $("curEpName"), selEl = $("epViewSel");
+  if (nameEl) nameEl.textContent = ep ? ep.title : "未选";
+  if (!selEl) return;
+  const multi = eps.length > 1;
+  if (nameEl) nameEl.style.display = multi ? "none" : "";
+  selEl.style.display = multi ? "" : "none";
+  if (multi){
+    const want = eps.map(e=>'<option value="'+e.id+'">'+esc(e.title)+'</option>').join("");
+    if (selEl.dataset.sig !== want){ selEl.innerHTML = want; selEl.dataset.sig = want; }
+    if (ep) selEl.value = ep.id;
+  }
 }
 function renderTokens(){
-  $("tokIn").textContent = state.tokIn.toLocaleString();
-  $("tokOut").textContent = state.tokOut.toLocaleString();
-  const p = MODELS[state.model] || MODELS["deepseek-flash"];
   const peak = isPeak();
-  const inP = peak ? p.inPeak : p.inOff;
-  const outP = peak ? p.outPeak : p.outOff;
-  const cost = (state.tokIn/1e6)*inP + (state.tokOut/1e6)*outP;
+  let ti = 0, to = 0, th = 0, cost = 0;
+  Object.keys(state.tok || {}).forEach(m=>{
+    const t = state.tok[m] || blankTok();
+    const p = MODELS[m] || MODELS[DEFAULT_MODEL];
+    ti += t.in || 0; to += t.out || 0; th += t.hit || 0;
+    /* 命中/未命中/输出三段分别计价，避免把命中价按未命中价高估 */
+    cost += (t.hit || 0) / 1e6 * (peak ? p.inHitPeak : p.inHitOff)
+          + (t.in  || 0) / 1e6 * (peak ? p.inPeak    : p.inOff)
+          + (t.out || 0) / 1e6 * (peak ? p.outPeak   : p.outOff);
+  });
+  $("tokIn").textContent = ti.toLocaleString();
+  $("tokHit").textContent = th.toLocaleString();
+  $("tokOut").textContent = to.toLocaleString();
   $("tokCost").textContent = cost.toFixed(4);
   $("tokTz").textContent = peak ? "高峰" : "空闲";
 }
@@ -821,20 +973,24 @@ function bindEvents(){
   $("scriptText").addEventListener("input", e=>{
     state.scriptText = e.target.value;
     $("scriptLen").textContent = countChars(e.target.value) + " 字";
-    state.eps = []; state.sel = [];
-    $("epList").innerHTML = ""; $("selBar").style.display = "none";
+    /* 不再静默清空分集：只标记「快照已过期」，由 renderEpList 给出显式提示 */
     $("btnParseEp").disabled = !e.target.value.trim();
-    persist(); refreshPipeline();
+    persist(); renderEpList();
   });
   $("btnParseEp").addEventListener("click", ()=>{
     if (!state.scriptText.trim()){ toast("请先粘贴或上传剧本", "err"); return; }
     state.eps = parseEpisodes(state.scriptText);
+    state.epsSnap = state.scriptText;          /* 记录本次分集对应的剧本快照 */
     state.sel = state.eps.length ? [state.eps[0].id] : [];
     persist(); renderEpList();
-    toast("识别到 " + state.eps.length + " 集", "ok");
+    toast("识别到 " + state.eps.length + " 集（默认勾选第 1 集，可多选批量生成）", "ok");
   });
   $("btnSelAll").addEventListener("click", ()=>{ state.sel = state.eps.map(e=>e.id); persist(); renderEpList(); });
-  $("btnSelNone").addEventListener("click", ()=>{ state.sel = []; persist(); renderEpList(); });
+  $("btnSelNone").addEventListener("click", ()=>{ state.sel = []; state.viewId = ""; persist(); renderEpList(); });
+  $("epViewSel").addEventListener("change", e=>{
+    state.viewId = e.target.value;
+    refreshPipeline();
+  });
 
   $("btnKeySave").addEventListener("click", ()=>{
     const v = $("keyInput").value.trim();
@@ -876,7 +1032,14 @@ function bindEvents(){
     }
   });
   $("btnExportMD").addEventListener("click", exportMD);
+  $("btnExportAll").addEventListener("click", exportAllMD);
   $("btnCopyMD").addEventListener("click", copyMD);
+  $("chkTech").checked = !!state.expTech;
+  $("chkTech").addEventListener("change", e=>{
+    state.expTech = e.target.checked; persist();
+    if ($("viewMd").classList.contains("on")) $("mdPreview").textContent = buildMD() || "完成流水线后，这里预览可导出的 MD 分镜脚本。";
+    toast(state.expTech ? "MD 导出将包含机位 / 视觉建议行" : "MD 导出已恢复为不含机位 / 视觉建议", "ok");
+  });
 
   $("btnNewProj").addEventListener("click", newProject);
   $("btnExportProj").addEventListener("click", exportProjectJSON);
@@ -905,7 +1068,7 @@ const RULES = [
   { id:"r14", name:"走位叙事",     desc:"空间判决/中轴对称/立场转换" },
   { id:"r15", name:"满负荷打包",   desc:"每片段 26~29.5s" }
 ];
-const SYS_HEAD = `你是资深 AI 真人剧分镜导演，擅长把短剧剧本转化为可直接用于即梦（Jimeng）AI 视频生成的分镜头脚本。你严格遵循「模板E · DeepSeek 总结计算版」与「导演十五规则」（v5）。
+const SYS_HEAD = `你是资深 AI 真人剧分镜导演，擅长把短剧剧本转化为可直接用于即梦（Jimeng）AI 视频生成的分镜头脚本。你严格遵循「导演十五规则」（规则 v5）与「模板E」（排版 v6）。
 
 【输出总则】
 1. 凡要求 JSON 输出的回复，只输出合法 JSON，不加任何解释、代码块围栏或多余文字。
@@ -1113,135 +1276,191 @@ function effortLabel(){
   const map = { off:"思考关闭", low:"思考·低", medium:"思考·中", high:"思考·高" };
   return map[state.effort] || map.off;
 }
+/* 批量范围：多选时只补「还没做」的集（省 token）；单选时无论是否已完成都跑，便于重跑/重生成 */
+function batchTargets(hasFn){
+  const eps = selEps();
+  if (eps.length <= 1) return eps;
+  return eps.filter(e => !hasFn(e));
+}
 async function runStep1(){
-  const ep = curEp();
-  if (!ep) return;
+  const all = selEps();
+  if (!all.length) return;
   if (!(await ensureKey())) return;
+  const targets = batchTargets(hasCompOf);
+  if (!targets.length){
+    toast("选中的集都已有压缩结果（如需重跑，请只勾选目标集）", "err");
+    return;
+  }
+  if (targets.length < all.length) log("批量压缩：跳过 " + (all.length - targets.length) + " 个已有结果的集", "info");
   state.running = "step1";
   state.abortCtrl = new AbortController();
   const b1 = $("btnRun1"); b1.disabled = true; b1.textContent = "取消";
   $("pipeState").textContent = "剧情压缩中";
-  log("→ 压缩「" + ep.title + "」（" + curModel() + " · " + effortLabel() + "）", "info");
+  let k = 0, failed = false;
   try {
-    const content = await callDeepSeek([
-      { role:"system", content: buildSystem() },
-      { role:"user", content: PROMPT_COMPRESS(ep.title, ep.text) }
-    ], { json:true, temperature:0.3, maxTokens:4000 });
-    const data = safeParse(content);
-    if (!data || !data.台词总览) throw new Error("压缩结果解析失败，请重试");
-    if (!data.集型) data.集型 = "对话对峙集";
-    if (!data.人物) data.人物 = [];
-    if (!data.场景) data.场景 = [];
-    if (!data.动作总览) data.动作总览 = [];
-    if (!data.核心道具) data.核心道具 = [];
-    state.comp[ep.id] = data;
-    persist();
-    log("✓ 压缩完成：台词 " + data.台词总览.length + " 条 / 动作 " + data.动作总览.length + " 条 / 集型「" + data.集型 + "」", "ok");
-    toast("剧情压缩完成", "ok");
+    for (const ep of targets){
+      if (state.abortCtrl.signal.aborted) break;
+      k++;
+      state.viewId = ep.id; renderViews();   /* 中/右栏跟着正在处理的集走，别一直停在第一集 */
+      log("→ 压缩「" + ep.title + "」(" + k + "/" + targets.length + ")（" + curModel() + " · " + effortLabel() + "）", "info");
+      try {
+        const content = await callDeepSeek([
+          { role:"system", content: buildSystem() },
+          { role:"user", content: PROMPT_COMPRESS(ep.title, ep.text) }
+        ], { json:true, temperature:0.3, maxTokens:4000 });
+        const data = safeParse(content);
+        if (!data || !data.台词总览) throw new Error("压缩结果解析失败，请重试");
+        if (!data.集型) data.集型 = "对话对峙集";
+        if (!data.人物) data.人物 = [];
+        if (!data.场景) data.场景 = [];
+        if (!data.动作总览) data.动作总览 = [];
+        if (!data.核心道具) data.核心道具 = [];
+        state.comp[ep.id] = data;
+        persist();
+        log("   ✓ 「" + ep.title + "」台词 " + data.台词总览.length + " 条 / 动作 " + data.动作总览.length + " 条 / 集型「" + data.集型 + "」", "ok");
+      } catch(e){
+        if (e.message === "PAUSED"){ log("已取消压缩", "info"); break; }
+        log("   ✗ 「" + ep.title + "」压缩失败：" + e.message, "err");
+        toast(e.message, "err");
+        failed = true; break;   /* 失败即停，避免后续集连带刷屏 */
+      }
+    }
+    if (k && !failed) toast("剧情压缩完成", "ok");
     refreshPipeline();
-  } catch(e){
-    if (e.message === "PAUSED"){ log("已取消压缩", "info"); }
-    else { log("✗ 压缩失败：" + e.message, "err"); toast(e.message, "err"); }
   } finally {
     b1.disabled = false; b1.textContent = "生成";
     state.running = null;
+    state.abortCtrl = null;
     refreshPipeline();
   }
 }
 async function runStep2(){
-  const ep = curEp();
-  if (!ep) return;
+  const all = selEps();
+  if (!all.length) return;
   if (!(await ensureKey())) return;
+  const targets = batchTargets(hasPlanOf);
+  if (!targets.length){
+    toast("选中的集都已有断点规划（如需重跑，请只勾选目标集）", "err");
+    return;
+  }
+  if (targets.length < all.length) log("批量规划：跳过 " + (all.length - targets.length) + " 个已有结果的集", "info");
   state.running = "step2";
   state.abortCtrl = new AbortController();
   const b2 = $("btnRun2"); b2.disabled = true; b2.textContent = "取消";
   $("pipeState").textContent = "断点规划中";
-  log("→ 断点规划「" + ep.title + "」", "info");
+  let k = 0, failed = false;
   try {
-    const content = await callDeepSeek([
-      { role:"system", content: buildSystem() },
-      { role:"user", content: PROMPT_PLAN(ep.title, state.comp[ep.id], ep.text) }
-    ], { json:true, temperature:0.3, maxTokens:3000 });
-    const data = safeParse(content);
-    if (!data || !Array.isArray(data.断点) || !data.断点.length) throw new Error("断点规划解析失败，请重试");
-    /* 硬校验：断点总时长 >30s 自动反馈重规划一次（模型常把拆分只写进说明而数组不拆） */
-    let over = (data.断点||[]).filter(b => (+b.总时长||0) > 30.0);
-    if (over.length){
-      log("⚠ 规划自检：断点 " + over.map(b=>b.id+"("+fmtSec(b.总时长)+"s)").join("、") + " 超 30s，自动反馈重规划…", "err");
-      const retry = await callDeepSeek([
-        { role:"system", content: buildSystem() },
-        { role:"user", content: PROMPT_PLAN(ep.title, state.comp[ep.id], ep.text) },
-        { role:"user", content: "上次规划的断点：" + JSON.stringify(data.断点.map(b=>({id:b.id,内容摘要:b.内容摘要,总时长:b.总时长}))) + "。其中断点" + over.map(b=>b.id).join("、") + "总时长超过 30 秒硬上限。请重新切分：把超时长断点拆成多个语义完整的断点，每个断点总时长必须 ≤30.0s（尽量 26~29.5s）。拆分结果必须直接写进「断点」数组（不得只写在说明里），输出完整 JSON（含全部断点）。" }
-      ], { json:true, temperature:0.3, maxTokens:3000 });
-      const data2 = safeParse(retry);
-      if (data2 && Array.isArray(data2.断点) && data2.断点.length){
-        const still = data2.断点.filter(b => (+b.总时长||0) > 30.0);
-        if (still.length) log("⚠ 重规划后仍超限：断点 " + still.map(b=>b.id+"("+fmtSec(b.总时长)+"s)").join("、") + "，请人工核对拆分", "err");
-        else log("✓ 重规划后全部断点 ≤30s", "ok");
-        data = data2;
+    for (const ep of targets){
+      if (state.abortCtrl.signal.aborted) break;
+      if (!state.comp[ep.id]){ log("⚠ 「" + ep.title + "」缺少剧情压缩，已跳过", "err"); continue; }
+      k++;
+      state.viewId = ep.id; renderViews();
+      log("→ 断点规划「" + ep.title + "」(" + k + "/" + targets.length + ")", "info");
+      try {
+        let content = await callDeepSeek([
+          { role:"system", content: buildSystem() },
+          { role:"user", content: PROMPT_PLAN(ep.title, state.comp[ep.id], ep.text) }
+        ], { json:true, temperature:0.3, maxTokens:3000 });
+        let data = safeParse(content);
+        if (!data || !Array.isArray(data.断点) || !data.断点.length) throw new Error("断点规划解析失败，请重试");
+        /* 硬校验：断点总时长 >30s 自动反馈重规划一次（模型常把拆分只写进说明而数组不拆） */
+        const over = (data.断点||[]).filter(b => (+b.总时长||0) > 30.0);
+        if (over.length){
+          log("   ⚠ 自检：断点 " + over.map(b=>b.id+"("+fmtSec(b.总时长)+"s)").join("、") + " 超 30s，自动反馈重规划…", "err");
+          content = await callDeepSeek([
+            { role:"system", content: buildSystem() },
+            { role:"user", content: PROMPT_PLAN(ep.title, state.comp[ep.id], ep.text) },
+            { role:"user", content: "上次规划的断点：" + JSON.stringify(data.断点.map(b=>({id:b.id,内容摘要:b.内容摘要,总时长:b.总时长}))) + "。其中断点" + over.map(b=>b.id).join("、") + "总时长超过 30 秒硬上限。请重新切分：把超时长断点拆成多个语义完整的断点，每个断点总时长必须 ≤30.0s（尽量 26~29.5s）。拆分结果必须直接写进「断点」数组（不得只写在说明里），输出完整 JSON（含全部断点）。" }
+          ], { json:true, temperature:0.3, maxTokens:3000 });
+          const data2 = safeParse(content);
+          if (data2 && Array.isArray(data2.断点) && data2.断点.length){
+            const still = data2.断点.filter(b => (+b.总时长||0) > 30.0);
+            if (still.length) log("   ⚠ 重规划后仍超限：断点 " + still.map(b=>b.id+"("+fmtSec(b.总时长)+"s)").join("、") + "，请人工核对拆分", "err");
+            else log("   ✓ 重规划后全部断点 ≤30s", "ok");
+            data = data2;
+          }
+        }
+        state.plans[ep.id] = data;
+        persist();
+        log("   ✓ 「" + ep.title + "」共 " + data.断点.length + " 个断点，合计 " + fmtSec(data.合计), "ok");
+      } catch(e){
+        if (e.message === "PAUSED"){ log("已取消断点规划", "info"); break; }
+        log("   ✗ 「" + ep.title + "」断点规划失败：" + e.message, "err");
+        toast(e.message, "err");
+        failed = true; break;
       }
     }
-    state.plans[ep.id] = data;
-    persist();
-    log("✓ 断点规划完成：共 " + data.断点.length + " 个断点，合计 " + data.合计 + "s", "ok");
-    toast("断点规划完成", "ok");
+    if (k && !failed) toast("断点规划完成", "ok");
     refreshPipeline();
-  } catch(e){
-    if (e.message === "PAUSED"){ log("已取消断点规划", "info"); }
-    else { log("✗ 断点规划失败：" + e.message, "err"); toast(e.message, "err"); }
   } finally {
     b2.disabled = false; b2.textContent = "生成";
     state.running = null;
+    state.abortCtrl = null;
     refreshPipeline();
   }
 }
 async function runStep3(){
-  const ep = curEp();
-  if (!ep) return;
+  const targets = selEps();
+  if (!targets.length) return;
   if (!(await ensureKey())) return;
   state.paused = false;
   state.running = "step3";
   state.abortCtrl = new AbortController();
-  const plan = state.plans[ep.id];
-  const compress = state.comp[ep.id];
   const b3 = $("btnRun3"); b3.disabled = true; b3.textContent = "生成中…";
   const pauseBtn = $("btnPause"); pauseBtn.style.display = ""; pauseBtn.textContent = "暂停";
-  const done = state.shots[ep.id] || {};
-  const ttl = plan.断点.length;
-  let doneN = plan.断点.filter(bp => done[bp.id] && done[bp.id].length).length;
-  $("pipeState").textContent = "逐断点分镜 " + doneN + "/" + ttl;
-  log("→ 逐断点生成分镜「" + ep.title + "」，共 " + ttl + " 断点" + (doneN ? "（续跑 " + doneN + "）" : ""), "info");
-  for (const bp of plan.断点){
-    if (state.paused){ log("⏸ 已暂停，剩余断点可点「继续生成」续跑", "info"); break; }
-    if (done[bp.id] && done[bp.id].length) continue;
-    setProg(doneN / ttl);
-    log("   断点" + bp.id + " 生成中…（" + bp.内容摘要 + "）", "info");
-    try {
-      const ctx = buildShotContext(compress, bp);
-      const content = await callDeepSeek([
-        { role:"system", content: buildSystem() },
-        { role:"user", content: PROMPT_SHOT(ep.title, bp, ctx) }
-      ], { json:true, temperature:0.6, maxTokens:6000 });
-      const data = safeParse(content);
-      if (!data || !Array.isArray(data.镜头) || !data.镜头.length) throw new Error("断点" + bp.id + "镜头解析失败");
-      done[bp.id] = data.镜头;
-      state.shots[ep.id] = done;
-      persist();
-      doneN++;
-      $("pipeState").textContent = "逐断点分镜 " + doneN + "/" + ttl;
-      log("   ✓ 断点" + bp.id + "：镜头 " + data.镜头.length + " 个", "ok");
-    } catch(e){
-      if (e.message === "PAUSED"){ log("⏸ 断点" + bp.id + "请求已中止（进度已保存）", "info"); break; }
-      log("   ✗ 断点" + bp.id + "失败：" + e.message + "（可从该断点继续）", "err");
-      toast("断点" + bp.id + "失败：" + e.message, "err");
-      break;
+  /* 断点级续跑：已完成断点直接跳过，因此「继续生成」天然支持跨集续跑 */
+  const totalBp = targets.reduce((a, ep)=> a + (((state.plans[ep.id]||{}).断点||[]).length), 0);
+  let doneAll = 0;
+  targets.forEach(ep=>{
+    const pl = state.plans[ep.id]; if (!pl) return;
+    const d = state.shots[ep.id] || {};
+    doneAll += pl.断点.filter(bp => d[bp.id] && d[bp.id].length).length;
+  });
+  $("pipeState").textContent = "分镜 " + doneAll + "/" + totalBp;
+  log("→ 逐断点生成分镜：共 " + targets.length + " 集 / " + totalBp + " 个断点" + (doneAll ? "（续跑 " + doneAll + "）" : ""), "info");
+  let failed = false, stopped = false;
+  for (const ep of targets){
+    const plan = state.plans[ep.id];
+    if (!plan){ log("⚠ 「" + ep.title + "」缺少断点规划，已跳过", "err"); continue; }
+    const compress = state.comp[ep.id];
+    const done = state.shots[ep.id] = state.shots[ep.id] || {};
+    if (state.viewId !== ep.id){ state.viewId = ep.id; renderViews(); }
+    for (const bp of plan.断点){
+      if (state.paused || state.abortCtrl.signal.aborted){ stopped = true; break; }
+      if (done[bp.id] && done[bp.id].length) continue;
+      setProg(totalBp ? doneAll / totalBp : 0);
+      log("   「" + ep.title + "」断点" + bp.id + " 生成中…（" + bp.内容摘要 + "）", "info");
+      try {
+        const ctx = buildShotContext(compress, bp);
+        const content = await callDeepSeek([
+          { role:"system", content: buildSystem() },
+          { role:"user", content: PROMPT_SHOT(ep.title, bp, ctx) }
+        ], { json:true, temperature:0.6, maxTokens:6000 });
+        const data = safeParse(content);
+        if (!data || !Array.isArray(data.镜头) || !data.镜头.length) throw new Error("断点" + bp.id + "镜头解析失败");
+        done[bp.id] = data.镜头;
+        state.shots[ep.id] = done;
+        persist();
+        doneAll++;
+        $("pipeState").textContent = "分镜 " + doneAll + "/" + totalBp;
+        renderViews();   /* 镜头表实时长出来 */
+        log("   ✓ 断点" + bp.id + "：镜头 " + data.镜头.length + " 个", "ok");
+      } catch(e){
+        if (e.message === "PAUSED"){ log("⏸ 请求已中止（进度已保存）", "info"); stopped = true; break; }
+        log("   ✗ 断点" + bp.id + "失败：" + e.message + "（可从该断点继续）", "err");
+        toast("断点" + bp.id + "失败：" + e.message, "err");
+        failed = true; break;
+      }
     }
+    if (failed || stopped) break;
   }
-  setProg(doneN >= ttl ? 1 : doneN/ttl);
-  if (doneN >= ttl){ log("✓ 全部分镜生成完成", "ok"); pauseBtn.style.display = "none"; }
-  else if (!state.paused) pauseBtn.style.display = "none";
+  setProg(totalBp && doneAll >= totalBp ? 1 : (totalBp ? doneAll / totalBp : 0));
+  if (totalBp && doneAll >= totalBp && !failed) log("✓ 全部 " + targets.length + " 集分镜生成完成", "ok");
+  else if (state.paused) log("⏸ 已暂停，剩余断点可点「继续生成」续跑", "info");
+  if (!state.paused) pauseBtn.style.display = "none";
   b3.disabled = false; b3.textContent = "生成";
   state.running = null;
+  state.abortCtrl = null;
   refreshPipeline();
 }
 
@@ -1255,10 +1474,12 @@ function renderOverview(){
     return;
   }
   let h = "";
+  /* 容错：导入/手工改过的备份可能缺字段，缺数组按空数组渲染，不要让整页崩掉 */
+  const lines = c.台词总览 || [], acts = c.动作总览 || [];
   h += '<div class="stat-grid" style="margin-bottom:10px">';
   h += '<div class="stat"><div class="k">集型</div><div class="v" style="color:var(--accent)">' + esc(c.集型) + '</div></div>';
-  h += '<div class="stat"><div class="k">台词</div><div class="v">' + c.台词总览.length + ' 条</div></div>';
-  h += '<div class="stat"><div class="k">动作</div><div class="v">' + c.动作总览.length + ' 条</div></div>';
+  h += '<div class="stat"><div class="k">台词</div><div class="v">' + lines.length + ' 条</div></div>';
+  h += '<div class="stat"><div class="k">动作</div><div class="v">' + acts.length + ' 条</div></div>';
   h += '<div class="stat"><div class="k">情绪曲线</div><div class="v" style="font-size:11px;font-family:inherit">' + esc(c.情绪曲线 || "—") + '</div></div>';
   h += '</div>';
   h += '<div style="font-size:12px;color:var(--muted)">' + esc(c.集型理由 || "") + '</div>';
@@ -1280,7 +1501,7 @@ function renderBpList(){
   const box = $("bpList"); const ep = curEp();
   if (!ep){ box.innerHTML = '<div class="hint">—</div>'; $("bpSum").textContent = "—"; return; }
   const plan = state.plans[ep.id];
-  if (!plan){ box.innerHTML = '<div class="hint">「断点规划」未生成。</div>'; $("bpSum").textContent = "—"; return; }
+  if (!plan || !Array.isArray(plan.断点) || !plan.断点.length){ box.innerHTML = '<div class="hint">「断点规划」未生成。</div>'; $("bpSum").textContent = "—"; return; }
   let h = '<table class="summary-table"><colgroup><col style="width:8%"><col style="width:44%"><col style="width:16%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr><th>断点</th><th>内容</th><th>台词</th><th>动作</th><th>总时长</th></tr></thead><tbody>';
   plan.断点.forEach(bp=>{
     const over = (+bp.总时长||0) > 30.0;
@@ -1320,7 +1541,7 @@ function renderShots(){
   if (!ep){ box.innerHTML = '<div class="empty">选择集数并完成流水线后，分镜镜头显示在这里。</div>'; $("shotCnt").textContent = "0"; return; }
   const plan = state.plans[ep.id];
   const shots = state.shots[ep.id];
-  if (!plan){ box.innerHTML = '<div class="empty">「断点规划」未生成。</div>'; $("shotCnt").textContent = "0"; return; }
+  if (!plan || !Array.isArray(plan.断点) || !plan.断点.length){ box.innerHTML = '<div class="empty">「断点规划」未生成。</div>'; $("shotCnt").textContent = "0"; return; }
   if (!shots || !Object.keys(shots).length){ box.innerHTML = '<div class="empty">点击「逐断点分镜」生成镜头。</div>'; $("shotCnt").textContent = "0"; return; }
   let n = 0, h = "";
   plan.断点.forEach(bp=>{
@@ -1424,7 +1645,7 @@ function renderSummary(){
   if (!ep){ box.innerHTML = '<div class="empty">—</div>'; $("sumCnt").textContent = "0"; return; }
   const plan = state.plans[ep.id];
   const shots = state.shots[ep.id];
-  if (!plan || !shots){ box.innerHTML = '<div class="empty">完成流水线后自动生成汇总。</div>'; $("sumCnt").textContent = "0"; return; }
+  if (!plan || !Array.isArray(plan.断点) || !shots){ box.innerHTML = '<div class="empty">完成流水线后自动生成汇总。</div>'; $("sumCnt").textContent = "0"; return; }
   let h = "";
   h += '<h3 style="font-size:13px;margin:2px 0 6px;color:var(--blue)">三、总时长统计</h3>';
   h += '<table class="summary-table"><colgroup><col style="width:8%"><col style="width:32%"><col style="width:10%"><col style="width:15%"><col style="width:15%"><col style="width:20%"></colgroup><thead><tr><th>断点</th><th>内容</th><th>镜头</th><th>计划时长</th><th>实际时长</th><th>偏差</th></tr></thead><tbody>';
@@ -1479,12 +1700,12 @@ function dramaTitle(){
   const first = (state.scriptText||"").split("\n").map(x=>x.trim()).find(x=>x && !/^第\s*[0-9一二三四五六七八九十百千零两]+\s*[集回章]/.test(x));
   return (first || "未命名剧集").slice(0,30);
 }
-function buildMD(){
-  const ep = curEp(); if (!ep) return "";
+function buildMD(epArg){
+  const ep = epArg || curEp(); if (!ep) return "";
   const plan = state.plans[ep.id], compress = state.comp[ep.id], shots = state.shots[ep.id];
   if (!plan || !compress || !shots) return "";
   const L = [];
-  L.push("# " + dramaTitle() + " · " + ep.title + " 分镜脚本（模板E · v6 多行式位置锚点版）");
+  L.push("# " + dramaTitle() + " · " + ep.title + " 分镜脚本（模板E · 规则v5 / 排版v6 多行式位置锚点版）");
   L.push("");
   L.push("画幅：9:16 竖屏 ｜ 模型：" + state.model + " ｜ 台词字数不含标点（仅汉字/字母/数字）");
   /* 审查核对：实际镜头合计超 30s 的断点在导出时醒目警告 */
@@ -1541,9 +1762,11 @@ function buildMD(){
       L.push("【镜头" + no + " · 断点" + bp.id + "】");
       L.push("转场：" + (s.转场 || "硬切"));
       L.push("景别/运镜：" + (s.景别||"") + (s.运镜 ? "，" + stripDur(s.运镜) : "") + (s.时长 != null ? "，" + fmtSec(s.时长) : ""));
+      if (state.expTech && s.机位) L.push("机位：" + s.机位);
       if (s.画面内容) L.push("画面内容：" + s.画面内容);
       if (s.台词) L.push("台词：" + s.台词);
       if (s.情绪标记) L.push("情绪标记：" + s.情绪标记);
+      if (state.expTech && s.视觉建议) L.push("视觉建议：" + s.视觉建议);
       L.push("");
     });
     const act = list.reduce((a,s)=>a+(+s.时长||0),0);
@@ -1578,7 +1801,7 @@ function buildMD(){
   L.push("");
   L.push("## 五、本集镜头角度应用说明");
   L.push("");
-  L.push("| 镜头 | 角度 | 理由 |");
+  L.push("| 镜头 | 机位/角度 | 景别/构图 |");
   L.push("| --- | --- | --- |");
   plan.断点.forEach(bp=>{
     (shots[bp.id]||[]).forEach((s,i)=>{
@@ -1597,17 +1820,43 @@ function buildMD(){
   L.push("全剧分镜脚本已全部完成。");
   return L.join("\n");
 }
-function exportMD(){
-  const md = buildMD();
-  if (!md){ toast("没有可导出的内容（需先完成流水线）", "err"); return; }
-  const ep = curEp();
-  const fn = (dramaTitle() + "_" + (ep ? ep.title : "分镜") + "_分镜脚本.md").replace(/[\\/:*?"<>|]/g, "_");
-  const blob = new Blob([md], { type:"text/markdown;charset=utf-8" });
+function safeFileName(s){ return String(s || "").replace(/[\\/:*?"<>|]/g, "_"); }
+function downloadText(text, filename){
+  const blob = new Blob([text], { type:"text/markdown;charset=utf-8" });
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = fn;
+  a.href = URL.createObjectURL(blob); a.download = filename;
   document.body.appendChild(a); a.click();
   setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 300);
+}
+function exportMD(){
+  const ep = curEp();
+  const md = buildMD(ep);
+  if (!md){ toast("没有可导出的内容（需先完成流水线）", "err"); return; }
+  const fn = safeFileName(dramaTitle() + "_" + (ep ? ep.title : "分镜") + "_分镜脚本.md");
+  downloadText(md, fn);
   log("↓ 已导出 " + fn, "ok");
+  toast("已导出 " + fn, "ok");
+}
+/* 批量生成后逐集导出太麻烦，这里把「所有已出分镜的选中集」并成一个合集文件 */
+function exportAllMD(){
+  const sel = selEps();
+  const ready = sel.filter(hasShotsOf);
+  if (ready.length < 2){ toast("需要至少 2 集已生成分镜", "err"); return; }
+  const skipped = sel.filter(e => !hasShotsOf(e)).map(e => e.title);
+  const parts = [];
+  ready.forEach(ep=>{ const md = buildMD(ep); if (md) parts.push(md); });
+  const head = [
+    "# " + dramaTitle() + " 分镜脚本合集（模板E · 规则v5 / 排版v6）",
+    "",
+    "画幅：9:16 竖屏 ｜ 模型：" + state.model + " ｜ 共 " + parts.length + " 集",
+    "包含：" + ready.map(e => e.title).join("、"),
+  ];
+  if (skipped.length) head.push("未生成分镜、已跳过：" + skipped.join("、"));
+  head.push("", "各集之间以 `---` 分隔。", "");
+  const md = head.join("\n") + "\n" + parts.join("\n\n---\n\n");
+  const fn = safeFileName(dramaTitle() + "_分镜脚本合集_" + parts.length + "集.md");
+  downloadText(md, fn);
+  log("↓ 已导出合集 " + fn + "（" + parts.length + " 集）", "ok");
   toast("已导出 " + fn, "ok");
 }
 function copyMD(){

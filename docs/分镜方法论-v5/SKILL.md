@@ -5,7 +5,7 @@ description: 把短剧/AI真人剧剧本的某一集（或剧情片段）转化�
 
 # AI 真人剧导演 · 即梦分镜
 
-> 当前版本：v6 · 多行式位置锚点版（在 v5 导演十五规则之上，固化排版五规范——模板E多行式/断点位置锚点/断点角色锚点/台词情绪提示词/朴素排版，见 `references/format-templates.md` 模板E 与 `references/director-rules.md` 规则四；导演十五规则见 `references/director-rules.md` + `references/director-rules-v5.md`）。
+> 当前版本：**规则 v5 · 排版 v6**。两套编号维度不同，勿混用：**规则 v5** = 导演十五规则条数版；**排版 v6** = 在 v5 规则之上固化的排版五规范（模板E多行式/断点位置锚点/断点角色锚点/台词情绪提示词/朴素排版）。排版五规范见 `references/format-templates.md` 模板E；导演十五规则见 `references/director-rules.md` + `references/director-rules-v5.md`。
 
 ## 概述
 

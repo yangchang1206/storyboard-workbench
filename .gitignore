@@ -1,0 +1,16 @@
+# 本地临时产物：仓库工作树、巡检截图、推送日志、虚拟环境
+_gh_tmp/
+_shots/
+_push.log
+.venv/
+__pycache__/
+*.pyc
+
+# 构建产物（由 tools/build_site.py 生成，不入库）
+site/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
