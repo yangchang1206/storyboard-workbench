@@ -286,6 +286,52 @@ const PROBE = `(async () => {
      && document.getElementById("exportTpl").options.length === 5,
      String(document.getElementById("exportTpl") && document.getElementById("exportTpl").options.length));
 
+  // ============ 排版 v6 四规范 + 画面内容三条红线（本轮改动回归）============
+  // 背景：①「断点角色锚点」不再输出到 MD（字段仍生成，供分镜阶段自检）；
+  //       ②位置锚点改场景级 —— 只有换场景/人物位置变化的断点才写该行；
+  //       ③画面内容禁止人物具体位置/人物光影/场景光影（位置→锚点行，光色→视觉建议）。
+  {
+    const sys = buildSystem();
+    ok("系统提示是排版四规范", sys.includes("排版四规范") && !sys.includes("排版五规范"),
+       sys.includes("排版四规范") ? "四规范" : "仍是五规范");
+    ok("系统提示含画面内容三条红线", sys.includes("画面内容红线（三条") && sys.includes("禁止写进画面内容"));
+
+    const p3 = PROMPT_SHOT("第1集", { id:1, 内容摘要:"x", 总时长:9,
+      位置锚点:"画左为门框与裴灼昀", 角色锚点:"楚景珩：左眉疤" }, { 集型:"对话对峙集" });
+    ok("分镜提示是排版四规范", p3.includes("排版四规范") && !p3.includes("排版五规范"));
+    ok("分镜提示的画面内容字段不再枚举走位/光变点",
+       !p3.includes("走位/终点态/灯光光变点") && p3.includes("不写任何光影"));
+    ok("分镜提示含画面内容三条红线", p3.includes("画面内容三条红线"));
+    ok("分镜提示把角色锚点标为内部自检（不输出 MD）", p3.includes("内部自检用，不输出到 MD"));
+
+    // 场景级位置锚点：非空直用 / 为空向上回溯 / 再变则用自己的
+    const plan2 = { 合计:0, 断点:[
+      { id:1, 内容摘要:"a", 位置锚点:"画左为门框", 角色锚点:"甲" },
+      { id:2, 内容摘要:"b", 位置锚点:"",         角色锚点:"甲" },
+      { id:3, 内容摘要:"c", 位置锚点:"画右为桌案", 角色锚点:"甲" }
+    ] };
+    state.plans.tp1 = plan2;
+    ok("锚点·非空断点直用本断点", resolveAnchor(plan2.断点[0]) === "画左为门框",
+       resolveAnchor(plan2.断点[0]));
+    const r2 = resolveAnchor(plan2.断点[1]);
+    ok("锚点·空断点回溯上方非空锚点",
+       r2.includes("画左为门框") && r2.includes("沿用上方锚点"), r2);
+    ok("锚点·位置再变化时用新锚点", resolveAnchor(plan2.断点[2]) === "画右为桌案",
+       resolveAnchor(plan2.断点[2]));
+
+    const mE2 = buildMD(state.eps[0], "E");
+    ok("模板E 输出场景位置锚点行",
+       mE2.includes("断点1 位置锚点：画左为门框") && mE2.includes("断点3 位置锚点：画右为桌案"));
+    const anchorLines = mE2.match(/断点\\d+ 位置锚点[^\\n]*/g) || [];
+    ok("模板E 位置未变的断点不输出锚点行", !mE2.includes("断点2 位置锚点"), anchorLines.join(" | ") || "无锚点行");
+    ok("模板E 不再输出角色锚点行", !/断点\\d+ 角色锚点：/.test(mE2));
+    const mD2 = buildMD(state.eps[0], "D");
+    ok("模板D 不输出角色锚点行、保留位置锚点行",
+       !/断点\\d+ 角色锚点：/.test(mD2) && mD2.includes("位置锚点"));
+    state.plans.tp1 = { 合计:9.0, 断点:[{ id:1, 内容摘要:"楚景珩挡门", 台词时长:3.1, 动作时长:5.9,
+      总时长:9.0, 位置锚点:"画左为门框与裴灼昀，画右为桌案与楚景珩", 角色锚点:"楚景珩：画右中景" }] };
+  }
+
   // ============ v1.7 存储层 / 运行历史 / 完整备份 ============
   // 背景：实测 localStorage 配额只有 5,241,856 字符，旧 persist() 溢出时会把整个 key
   // 覆盖成 {apiKey,model}，等于把用户全部项目写没；且同一份业务数据被序列化了两次。
