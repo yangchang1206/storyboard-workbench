@@ -290,6 +290,26 @@ const PROBE = `(async () => {
   // 背景：实测 localStorage 配额只有 5,241,856 字符，旧 persist() 溢出时会把整个 key
   // 覆盖成 {apiKey,model}，等于把用户全部项目写没；且同一份业务数据被序列化了两次。
 
+  // (0) 首次使用自动建档（v1.7 真实 Key 端到端实测暴露的 P0 回归：
+  //     只序列化 projects 后，无项目时 syncCurProject 直接 return，首次用户数据不落盘）
+  {
+    const keep = { projects: state.projects, curId: state.curId,
+      scriptText: state.scriptText, eps: state.eps, sel: state.sel,
+      comp: state.comp, plans: state.plans, shots: state.shots };
+    state.projects = []; state.curId = null;
+    state.scriptText = "第一集 测试\\n正文"; state.eps = []; state.sel = [];
+    state.comp = {}; state.plans = {}; state.shots = {};
+    syncCurProject();
+    ok("首次使用·有剧本时自动建档",
+       state.projects.length === 1 && state.curId === state.projects[0].id
+       && state.projects[0].scriptText === "第一集 测试\\n正文",
+       "projects=" + state.projects.length);
+    state.projects = []; state.curId = null; state.scriptText = ""; state.eps = [];
+    syncCurProject();
+    ok("首次使用·无数据时不建档", state.projects.length === 0, "projects=" + state.projects.length);
+    Object.assign(state, keep);   /* 还原现场 */
+  }
+
   // (1) 载荷里不得再有顶层摊平的业务副本
   state.eps = [{id:"ep1",title:"第1集",text:"a"}];
   state.scriptText = "剧本正文"; state.sel = ["ep1"];

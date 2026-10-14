@@ -882,8 +882,16 @@ function guessProjName(text){
 }
 function curProject(){ return state.projects.find(p=>p.id===state.curId) || null; }
 function syncCurProject(){
-  const p = curProject();
-  if (!p) return;
+  let p = curProject();
+  if (!p){
+    /* 首次使用还没有任何项目：一旦有业务数据就自动建档（兑现「粘贴剧本→智能分集后自动存档」的承诺）。
+       v1.7 存储重构只序列化 projects，漏了这条路径会导致首次用户的数据不落盘。 */
+    if (!(state.scriptText || "").trim() && !(state.eps && state.eps.length)) return;
+    p = { id:"p" + Date.now(), name:guessProjName(state.scriptText), createdAt:Date.now(), updatedAt:Date.now(),
+      scriptText:"", scriptFile:"", dramaTitle:"", eps:[], epsSnap:"", sel:[], comp:{}, plans:{}, shots:{} };
+    state.projects.push(p);
+    state.curId = p.id;
+  }
   p.scriptText = state.scriptText; p.eps = state.eps; p.epsSnap = state.epsSnap; p.sel = state.sel;
   p.scriptFile = state.scriptFile; p.dramaTitle = state.dramaTitle;
   p.comp = state.comp; p.plans = state.plans; p.shots = state.shots;
@@ -1161,7 +1169,9 @@ async function callDeepSeekRaw(messages, opts){
 }
 async function testConn(){
   try {
-    const content = await callDeepSeek([{role:"user", content:"回复OK两个字"}], {model:curModel(), temperature:0, maxTokens:50, stage:"test"});
+    /* 思考模式下 max_tokens 会被 reasoning 先吃掉：实测 50 不够，给到 2000 才能露出正文 */
+    const mt = (state.effort && state.effort !== "off") ? 2000 : 50;
+    const content = await callDeepSeek([{role:"user", content:"回复OK两个字"}], {model:curModel(), temperature:0, maxTokens:mt, stage:"test"});
     toast("连接成功：" + String(content).slice(0,40), "ok");
     log("连接测试通过：" + curModel() + " · " + effortLabel(), "ok");
   } catch(e){
