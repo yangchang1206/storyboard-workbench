@@ -2,8 +2,14 @@
 
 单文件本地网页应用：上传剧本 → 智能分集 → 三步流水线（剧情压缩 → 断点规划 → 逐断点分镜）→ 导出模板E六段 Markdown 分镜脚本。配套完整「导演十五规则 v5」方法论文档。
 
-**在线版**：https://storyboard-workbench-43699.app.workbuddy.host/
+**在线版**：https://yangchang1206.github.io/storyboard-workbench/
 （也可下载后双击 `分镜工作台.html` 本地运行，数据不出本机）
+
+> 发布通道 = **GitHub Pages（`main` 分支部署，服务仓库根目录的 `index.html`）**，
+> 所以发布就是 `git push origin main`，Pages 会自动重建，无需其它工具。
+> 旧通道 `https://storyboard-workbench-43699.app.workbuddy.host/` 由 WorkBuddy 的
+> `workbuddy_sites_deploy` 托管，只能在 WorkBuddy 会话里更新；当前它停在 v1.7.1，
+> 以 GitHub Pages 为准。`site/` 目录仅供该旧通道上传使用（不入库）。
 
 ## 界面预览
 
@@ -124,7 +130,13 @@ node tools/make_icons.mjs            # 仅当改了 icon.svg 时需要：重新�
 python -m http.server 8899 --bind 127.0.0.1   # 另开一个终端，在 site/ 目录下
 node tools/smoke_test.mjs http://127.0.0.1:8899/index.html
 node tools/smoke_test.mjs "file:///D:/项目/项目2/storyboard-workbench/index.html"   # 双击场景
-node tools/smoke_test.mjs https://storyboard-workbench-43699.app.workbuddy.host/   # 线上
+node tools/smoke_test.mjs https://yangchang1206.github.io/storyboard-workbench/     # 线上（GitHub Pages）
+```
+
+发布 = 提交后 `git push origin main`，GitHub Pages 会自动从 `main` 重建（通常 1 分钟内），
+推送后按铁律复核线上：`md5 + 字节数 + 关键字符串计数`，再对线上 URL 跑一次冒烟测试（应 100/100）。
+```bash
+git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin main
 ```
 
 > 测试脚本用 Chrome 无头模式，本机若装了系统代理（如 Clash），需保证 Chrome 加 `--no-proxy-server`（脚本内已加），否则连 `127.0.0.1` 都会被代理拦掉。
@@ -146,7 +158,7 @@ node tools/smoke_test.mjs https://storyboard-workbench-43699.app.workbuddy.host/
 - **v1.6** —— 导出剧名推断修正：原 `dramaTitle()` 取「第一行非分集标记的内容」当剧名，实测会取到
   第一句台词或场景描述（如 `1993年，北方小城。`）。改为四级优先级：手填 > 上传文件名 > 剧本里「像标题」的一行 > 兜底，
   并新增「剧名」输入框（上传文件时以文件名预填）
-- **v1.7（当前）** —— 存储层重构 + 运行历史 + 模板 A/B/C/D：
+- **v1.7** —— 存储层重构 + 运行历史 + 模板 A/B/C/D：
   - **修数据丢失缺陷**：原 `persist()` 在 localStorage 溢出时会把整个 key 覆盖成 `{apiKey,model}`，
     等于把用户全部项目写没（实测溢出后落盘只剩 38 字符）。现在改为保留旧存档 + 顶栏常亮告警 + 引导导出备份
   - **IndexedDB 主存**（localStorage 降级）；载荷去掉顶层摊平副本（实测省 50% 体积）；
@@ -166,6 +178,8 @@ node tools/smoke_test.mjs https://storyboard-workbench-43699.app.workbuddy.host/
   - **新增「画面内容三条红线」**：镜头的**画面内容禁止出现 ① 人物具体位置 ② 人物光影 ③ 场景光影**，
     位置只进位置锚点行、光与色只进视觉建议字段（规则 r9/r14、灯光情绪映射、建立镜头铁律同步改口）
   - 顶栏/导出标题改称「排版v6 四规范」；冒烟测试扩到 **100 项断言**（新增 13 项覆盖上述回归）
+  - **发布通道改用 GitHub Pages**：`main` 分支部署仓库根目录 `index.html`，`git push` 即发布；
+    workbuddy.host 旧链接仍需 WorkBuddy 侧更新，当前停在 v1.7.1
 - **v1.5** —— 缺陷修复版：
   - `esc()` 补转义 `"` `'`（模型输出含引号会撑破 `value="..."` 属性、破坏镜头表）
   - 多集勾选真正生效（原 `curEp()` 只取第一集，勾 10 集只跑 1 集）
