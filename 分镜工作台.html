@@ -45,7 +45,7 @@ if (location.protocol !== "file:"){
   .brand .t2{font-size:11px;color:var(--muted);margin-top:1px}
   .settings{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
   .settings label{font-size:12px;color:var(--muted)}
-  .settings input[type=password]{width:300px}
+  .settings input[type=password]{width:220px}
   .field{display:flex;align-items:center;gap:6px}
   .btn{background:var(--panel3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 12px;font-size:13px;transition:background .15s,border-color .15s}
   .btn:hover{background:#263347;border-color:#3C4B5E}
@@ -59,7 +59,7 @@ if (location.protocol !== "file:"){
   .hint{font-size:12px;color:var(--dim)}
 
   /* ===== 主布局 ===== */
-  .layout{display:grid;grid-template-columns:340px 300px minmax(0,1fr);gap:12px;padding:12px;align-items:start}
+  .layout{display:grid;grid-template-columns:350px minmax(300px,340px) minmax(0,1fr);gap:12px;padding:12px;align-items:start}
   .col{display:flex;flex-direction:column;gap:12px;min-width:0}
   .panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden}
   .panel > .ph{padding:9px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--panel2)}
@@ -108,6 +108,12 @@ if (location.protocol !== "file:"){
   .rule input{accent-color:var(--accent);width:14px;height:14px}
   .rule .r-name{flex:none}
   .rule .r-desc{font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* 可折叠面板题头（导演规则用）：默认收起省地方，题头右侧显示已启用条数 + 展开箭头 */
+  .ph-toggle{cursor:pointer;user-select:none}
+  .ph-toggle:hover{background:var(--panel3)}
+  .ph-toggle .caret{display:inline-block;font-size:10px;color:var(--dim);transition:transform .15s}
+  .panel.open .ph-toggle .caret{transform:rotate(90deg)}
+  .empty .hint{display:inline-block;margin-top:6px}
   .log-box{background:#0A0E13;border:1px solid var(--border);border-radius:6px;padding:8px;font-family:var(--mono);font-size:11px;color:var(--muted);max-height:150px;overflow-y:auto;line-height:1.7;white-space:pre-wrap;word-break:break-all}
   .log-box .ok{color:var(--green)} .log-box .err{color:var(--red)} .log-box .info{color:var(--blue)}
   .progress{height:5px;background:var(--panel3);border-radius:3px;overflow:hidden;margin-top:8px}
@@ -136,6 +142,9 @@ if (location.protocol !== "file:"){
   table.shots td .edit{width:100%;background:transparent;border:1px solid transparent;padding:2px 3px;font-size:12px;border-radius:4px;line-height:1.5;resize:none}
   table.shots td .edit:hover{border-color:var(--border2)}
   table.shots td .edit:focus{background:var(--panel3);border-color:var(--accent);outline:none}
+  /* 末列（操作）只放一个「重生成」按钮：居中且不折行，否则窄栏下会被压成竖排三个字 */
+  table.shots th:last-child,table.shots td:last-child{text-align:center;padding-left:4px;padding-right:4px}
+  table.shots td:last-child .btn{white-space:nowrap;padding:3px 6px}
   .mono{font-family:var(--mono);font-size:11px;color:var(--muted)}
   .act-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
   .summary-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;margin-top:6px}
@@ -178,6 +187,23 @@ if (location.protocol !== "file:"){
     font-size:11.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
   .hist-detail code{font-family:var(--mono);color:var(--accent)}
   .hist-empty{padding:22px;text-align:center;color:var(--dim);font-size:12.5px}
+
+  /* ===== 宽屏桌面：整页不滚，三栏各自独立滚动，顶栏与各栏题头常驻 ===== */
+  @media (min-width:1181px){
+    html,body{height:100%}
+    body{display:flex;flex-direction:column;overflow:hidden}
+    .topbar,.savewarn{flex:none}
+    .layout{flex:1;min-height:0;align-items:stretch}
+    .col{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:2px}
+    /* 关键：面板不许被压缩（否则栏高不够时面板被挤扁、内容被 overflow:hidden 裁掉），改为整栏滚动 */
+    .col > .panel{flex:none}
+    /* 右栏：面板撑满整栏，题头/标签页/导出按钮固定，只有结果区滚动 */
+    .col-right{overflow:hidden;padding-right:0}
+    .col-right > .panel{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+    .col-right .tabs{flex:none}
+    .col-right .view.on{flex:1;min-height:0;overflow-y:auto}
+    .col-right .mdpreview{max-height:none}
+  }
 
   @media (max-width:1180px){
     .layout{grid-template-columns:1fr 1fr}
@@ -317,8 +343,11 @@ if (location.protocol !== "file:"){
     </section>
 
     <section class="panel">
-      <div class="ph"><span class="ph-title">导演规则</span><span class="ph-meta">规则 v5 · 十五规则 · 可开关</span></div>
-      <div class="pb"><div class="rules" id="ruleBox"></div></div>
+      <div class="ph ph-toggle" id="ruleHead" title="点击展开 / 收起（规则 v5 · 十五规则，可逐条开关）">
+        <span class="ph-title">导演规则</span>
+        <span class="ph-meta"><span id="ruleSum">15 / 15 启用</span><span class="caret">▸</span></span>
+      </div>
+      <div class="pb" id="ruleBody" style="display:none"><div class="rules" id="ruleBox"></div></div>
     </section>
   </div>
 
@@ -1705,10 +1734,24 @@ function renderRules(){
       state.rules[r.id] = e.target.checked ? 1 : 0;
       persist();
       const on = RULES.filter(x=>state.rules[x.id]).length;
-      toast("导演规则启用 " + on + " / 15", "ok");
+      updateRuleSum();
+      toast("导演规则启用 " + on + " / " + RULES.length, "ok");
     });
     box.appendChild(d);
   });
+}
+/* 导演规则面板默认收起（十五行内容多、定下后很少改），题头实时显示已启用条数。
+   收起只改 display，不删节点 —— #ruleBox .rule 始终是 15 个，冒烟测试与功能都不受影响。 */
+function updateRuleSum(){
+  const el = $("ruleSum"); if (!el) return;
+  el.textContent = RULES.filter(x=>state.rules[x.id]).length + " / " + RULES.length + " 启用";
+}
+function toggleRulePanel(){
+  const body = $("ruleBody"); if (!body) return;
+  const open = body.style.display === "none";
+  body.style.display = open ? "" : "none";
+  const panel = body.parentElement;
+  if (panel && panel.classList) panel.classList.toggle("open", open);
 }
 
 const PROMPT_COMPRESS = (epTitle, text) => `你是 AI 真人剧分镜流水线的第一步：剧情压缩。
@@ -2034,10 +2077,10 @@ async function runStep3(){
 /* ========== 中栏渲染：概览 ========== */
 function renderOverview(){
   const box = $("overview"); const ep = curEp();
-  if (!ep){ box.innerHTML = '<div class="hint">选择剧本集数后开始流水线。</div>'; return; }
+  if (!ep){ box.innerHTML = '<div class="hint">还没有选中的集 —— 先在左栏「剧本导入」粘贴剧本、点「智能分集」，再勾选集数。</div>'; return; }
   const c = state.comp[ep.id];
   if (!c){
-    box.innerHTML = '<div class="hint">「剧情压缩」未生成。点击中栏①生成。</div>';
+    box.innerHTML = '<div class="hint">「剧情压缩」未生成 —— 点左栏「流水线」第 ① 步的「生成」。</div>';
     return;
   }
   let h = "";
@@ -2105,11 +2148,11 @@ async function genBreakpoint(ep, bp){
 }
 function renderShots(){
   const box = $("shotList"); const ep = curEp();
-  if (!ep){ box.innerHTML = '<div class="empty">选择集数并完成流水线后，分镜镜头显示在这里。</div>'; $("shotCnt").textContent = "0"; return; }
+  if (!ep){ box.innerHTML = '<div class="empty">分镜镜头会显示在这里。<br><span class="hint">下一步：左栏「剧本导入」粘贴剧本 →「智能分集」→ 勾选集数</span></div>'; $("shotCnt").textContent = "0"; return; }
   const plan = state.plans[ep.id];
   const shots = state.shots[ep.id];
-  if (!plan || !Array.isArray(plan.断点) || !plan.断点.length){ box.innerHTML = '<div class="empty">「断点规划」未生成。</div>'; $("shotCnt").textContent = "0"; return; }
-  if (!shots || !Object.keys(shots).length){ box.innerHTML = '<div class="empty">点击「逐断点分镜」生成镜头。</div>'; $("shotCnt").textContent = "0"; return; }
+  if (!plan || !Array.isArray(plan.断点) || !plan.断点.length){ box.innerHTML = '<div class="empty">还没有断点规划。<br><span class="hint">下一步：左栏「流水线」第 ② 步点「生成」</span></div>'; $("shotCnt").textContent = "0"; return; }
+  if (!shots || !Object.keys(shots).length){ box.innerHTML = '<div class="empty">还没有分镜镜头。<br><span class="hint">下一步：左栏「流水线」第 ③ 步点「生成」</span></div>'; $("shotCnt").textContent = "0"; return; }
   let n = 0, h = "";
   plan.断点.forEach(bp=>{
     const list = shots[bp.id];
@@ -2119,7 +2162,7 @@ function renderShots(){
     const over30 = act > 30.0;
     h += '<div class="shot-group">';
     h += '<div class="sg-head"><span class="bp-id">断点'+bp.id+'</span><span class="bp-title">'+esc(bp.内容摘要)+'</span><span class="bp-time" style="'+(over30?'color:#ff6b6b;font-weight:700':'')+'">'+fmtSec(act)+' / '+fmtSec(bp.总时长)+'s'+(over30?' ⚠超30s':'')+'</span><button class="btn sm ghost" data-regen="'+bp.id+'" style="margin-left:8px">重生成断点</button></div>';
-    h += '<table class="shots"><colgroup><col style="width:5%"><col style="width:6%"><col style="width:10%"><col style="width:12%"><col style="width:12%"><col style="width:5%"><col style="width:18%"><col style="width:15%"><col style="width:12%"><col style="width:5%"></colgroup>';
+    h += '<table class="shots"><colgroup><col style="width:5%"><col style="width:6%"><col style="width:8%"><col style="width:10%"><col style="width:9%"><col style="width:5%"><col style="width:24%"><col style="width:14%"><col style="width:12%"><col style="width:7%"></colgroup>';
     h += '<thead><tr><th>镜号</th><th>转场</th><th>景别</th><th>机位·角度</th><th>运镜</th><th>时长</th><th>画面内容</th><th>台词</th><th>视觉建议</th><th>操作</th></tr></thead><tbody>';
     list.forEach((s,i)=>{
       const tag = s.情绪标签 ? s.情绪标签 : "";
@@ -2138,7 +2181,7 @@ function renderShots(){
     });
     h += '</tbody></table></div>';
   });
-  if (!n){ box.innerHTML = '<div class="empty">暂无镜头，点击「逐断点分镜」生成。</div>'; $("shotCnt").textContent = "0"; return; }
+  if (!n){ box.innerHTML = '<div class="empty">还没有可汇总的镜头。<br><span class="hint">先完成左栏「流水线」第 ③ 步</span></div>'; $("shotCnt").textContent = "0"; return; }
   box.innerHTML = h;
   $("shotCnt").textContent = n;
   box.querySelectorAll(".edit").forEach(el=>{
@@ -2212,7 +2255,7 @@ function renderSummary(){
   if (!ep){ box.innerHTML = '<div class="empty">—</div>'; $("sumCnt").textContent = "0"; return; }
   const plan = state.plans[ep.id];
   const shots = state.shots[ep.id];
-  if (!plan || !Array.isArray(plan.断点) || !shots){ box.innerHTML = '<div class="empty">完成流水线后自动生成汇总。</div>'; $("sumCnt").textContent = "0"; return; }
+  if (!plan || !Array.isArray(plan.断点) || !shots){ box.innerHTML = '<div class="empty">完成三步流水线后，这里自动生成汇总。</div>'; $("sumCnt").textContent = "0"; return; }
   let h = "";
   h += '<h3 style="font-size:13px;margin:2px 0 6px;color:var(--blue)">三、总时长统计</h3>';
   h += '<table class="summary-table"><colgroup><col style="width:8%"><col style="width:32%"><col style="width:10%"><col style="width:15%"><col style="width:15%"><col style="width:20%"></colgroup><thead><tr><th>断点</th><th>内容</th><th>镜头</th><th>计划时长</th><th>实际时长</th><th>偏差</th></tr></thead><tbody>';
@@ -2615,6 +2658,9 @@ function copyMD(){
 /* ========== 初始化 ========== */
 function init(){
   renderRules();
+  updateRuleSum();
+  const rh = $("ruleHead");
+  if (rh) rh.addEventListener("click", toggleRulePanel);
   $("effortSel").value = state.effort;
   bindEvents();
   hydrateDom();
