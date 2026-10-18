@@ -122,7 +122,7 @@ localStorage 只作降级通道与设置镜像；载荷只序列化 `projects` �
 
 ```bash
 python tools/check_inline_js.py      # 内联脚本语法校验（单文件最容易死在这里）
-python tools/sync_single_file.py     # 同步出 分镜工作台.html
+python tools/sync_single_file.py     # 同步出 分镜工作台.html，并同步桌面版副本
 python tools/build_site.py           # 生成部署目录 site/
 node tools/make_icons.mjs            # 仅当改了 icon.svg 时需要：重新生成 192/512 PNG
 
@@ -133,10 +133,17 @@ node tools/smoke_test.mjs "file:///D:/项目/项目2/storyboard-workbench/index.
 node tools/smoke_test.mjs https://yangchang1206.github.io/storyboard-workbench/     # 线上（GitHub Pages）
 ```
 
+> `sync_single_file.py` 会顺带同步**仓库外的桌面版副本**（`F:\OpenCode项目\分镜工作台\分镜工作台.html`
+> —— 带桌面快捷方式与独立 `.profile`、用来发给别人的那份）。桌面版目录可换：
+> `--desktop "D:\某目录"`（可重复）或设环境变量 `SBW_DESKTOP_DIR`（`;` 分隔多个）；
+> 目录不存在会自动跳过，所以这个默认值不会妨碍别人使用本仓库。
+> 桌面版旁边若已有旧的 `分镜工作台-分享版.zip`，脚本会提醒你重打，免得把旧包发出去。
+
 发布 = 提交后 `git push origin main`，GitHub Pages 会自动从 `main` 重建（通常 1 分钟内），
 推送后按铁律复核线上：`md5 + 字节数 + 关键字符串计数`，再对线上 URL 跑一次冒烟测试（应 100/100）。
 ```bash
-git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin main
+git push origin main   # 先直连；直连不通再挂代理（Clash 没开时 127.0.0.1:7897 是关的）
+# 代理兜底：git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin main
 ```
 
 > 测试脚本用 Chrome 无头模式，本机若装了系统代理（如 Clash），需保证 Chrome 加 `--no-proxy-server`（脚本内已加），否则连 `127.0.0.1` 都会被代理拦掉。
@@ -168,7 +175,13 @@ git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 pus
   - **补齐模板 A/B/C/D 导出**：与模板E 共用数据，切换不重跑流水线
   - **补 PWA PNG 图标 192/512**（`tools/make_icons.mjs`），Service Worker 缓存升到 v3
   - 补 `LICENSE`（MIT）；冒烟测试扩到 **85 项断言**，并新增「写 → reload → 读回」持久化往返验证
-- **v1.9（当前）** —— 界面重排（布局精修，配色与操作方式不变）：
+- **v1.9.1（当前）** —— 工具链：`tools/sync_single_file.py` 顺手同步**仓库外的桌面版副本**
+  （`F:\OpenCode项目\分镜工作台\分镜工作台.html`，带快捷方式与独立 `.profile` 的那份），
+  不再需要手工覆盖。桌面版目录按「`--desktop` 参数 > `SBW_DESKTOP_DIR` 环境变量 > 内置默认」解析，
+  **目录不存在就跳过**（别人 clone 本仓库不会因此报错）；两处副本都做了幂等，内容一致就跳过写入
+  （不白改 mtime）。若桌面版旁边已存在「分享包 zip」，会提醒它已经过期 —— 避免把旧包发给别人。
+  `--check` 一并校验桌面版，`--no-desktop` 可退回只同步仓库内那一份。
+- **v1.9** —— 界面重排（布局精修，配色与操作方式不变）：
   - **三栏各自独立滚动**：宽屏（≥1181px）下整页不再滚动、顶栏常驻；左栏（项目历史/剧本/流水线）
     与中栏（概览/断点）各自滚动。连带修掉一个隐蔽缺陷：`.col` 是高度受限的 flex 容器，面板会被
     默认的 `flex:0 1 auto` 压扁、内容被 `overflow:hidden` 裁掉（1366 宽下「剧名」输入框整块消失），
